@@ -3,7 +3,6 @@ mod network;
 mod item;
 mod queue;
 mod builder;
-mod silence;
 
 pub use builder::Builder;
 use queue::Queue;

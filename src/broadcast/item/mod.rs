@@ -63,7 +63,6 @@ pub struct ItemInner {
     pub(crate) uri: String,
     broadcast_clone: Option<super::BroadcastWeak>,
     values: RwLock<ShareableValues>,
-    informer: Option<Mutex<Sender<gst::ClockTime>>>,
     max_duration: u32,
 }
 
@@ -74,7 +73,6 @@ impl Default for ItemInner {
             uri: "".to_string(),
             broadcast_clone: None,
             values: RwLock::new(ShareableValues::default()),
-            informer: None,
             max_duration: 0, // zero means no max duration based on this value, take the real element length
         }
     }
