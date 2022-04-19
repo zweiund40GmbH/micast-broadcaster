@@ -22,6 +22,12 @@ impl Queue {
     }
 
 
+    /// return the next item in list to play
+    /// 
+    /// check for __Prepared__ items, if a item is found, return it
+    /// 
+    /// alterate check for __Unknown__ items, which means that gstreamer has not already load the item (decoderbin etc...)
+    /// and wait for it to get __Prepared__
     fn next_check(&self, retry_count: Option<usize>) -> Option<Arc<super::Item>> {
         let items = self.inner.write().unwrap();
 
@@ -66,10 +72,15 @@ impl Queue {
 
 
 
+    /// return the next item in queue
     pub(crate) fn next(&self) -> Option<Arc<super::Item>> {
         self.next_check(Some(5))
     }
 
+    /// returns the current item in queue
+    /// 
+    /// this is the first item in list where state is __Activate__
+    /// returns None if no current item is found (mean no item with state __Activate__)
     pub(crate) fn current(&self) -> Option<Arc<super::Item>> {
         let inner = self.inner.write().unwrap();
         for item in inner.iter() {

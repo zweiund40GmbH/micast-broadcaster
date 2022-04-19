@@ -12,13 +12,13 @@ use std::sync::mpsc::Sender;
 #[derive(Clone, Copy, Eq, PartialEq,Debug)]
 pub enum ItemState {
     New,
-    Prepared,
-    Activate,
-    GoingEOS,
-    Eos,
-    EarlyEos,
-    Unknown,
-    Removed,
+    Prepared, /// gstreamer / decodebin has loaded the item, and assign all neccesary elements to it
+    Activate, /// item is playing, means this is the currently playing item
+    GoingEOS, /// item is on the way to EOS (time to load next item)
+    Eos, // item is EOS 
+    EarlyEos, // manualy triggered EOS
+    Unknown, /// Item is newley created and has no state
+    Removed, // item can removed (by clean fn in queue)
 }
 
 // Strong reference to our broadcast server state
@@ -88,15 +88,6 @@ impl std::ops::Deref for Item {
         &self.0
     }
 }
-
-/*
-impl std::ops::DerefMut for Item {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-*/
-
 
 impl ItemWeak {
     // Try upgrading a weak reference to a strong one

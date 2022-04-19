@@ -35,7 +35,6 @@ pub struct BroadcastInner {
     #[allow(unused_parens, dead_code)]
     clock_provider: gst_net::NetTimeProvider,
     playback_queue: Queue,
-    silence: silence::Silence,
 }
 
 // To be able to access the App's fields directly
@@ -73,12 +72,6 @@ impl Broadcast {
     /// * `rtcp_receive_port` - Port for receive rtcp Informations from connected clients
     /// * `clock_port` - Port where the clock gets streamed (should 8555)
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// // You can have rust code between fences inside the comments
-    /// // If you pass --test to `rustdoc`, it will even test it for you!
-    /// ```
     pub fn new(
         server_ip: &str, 
         rtp_sender_port: i32, 
@@ -116,6 +109,12 @@ impl Broadcast {
                         err.error(),
                         err.debug()
                     );
+
+                    // currently we need to panic here.
+                    // the program who use this lib, would then automatically restart.
+                    // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
+                    panic!("got an error, quit here");
+                    
                 }
                 _ => (),
             };
@@ -154,21 +153,13 @@ impl Broadcast {
         // -- link the output of audiomixer to input of the sender_bin
         audiomixer_convert.link_pads(Some("src"), &sender_bin, Some("sink"))?;
 
-
-        debug!("set pipeline already to Playing");
         pipeline.set_state(gst::State::Playing)?;
 
-        debug!("set silencer");
-        let silence = silence::Silence::new(&pipeline)?;
-        debug!("silencer is set");
-
-        
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             clock_provider,
             playback_queue: Queue::new(),
-            silence: silence,
         }));
 
         
@@ -228,7 +219,6 @@ impl Broadcast {
     fn schedule_crossfade(&self, item: &item::Item, queue_size: u64) {
 
         debug!("schedule_crossfade is triggered, so item {} is going eos, we start with next item", item.uri);
-
         let next_item_result = self.activate_next_item();
         if let Err(e) = next_item_result {
             warn!("could not activate next item cause of {}", e);
@@ -359,6 +349,8 @@ impl Broadcast {
 
 }
 
+
+/// Not implemented yet
 pub enum ScheduleState {
     AfterCurrent, // Nach dem aktuellen Song
     Now, // Jetzt Sofort

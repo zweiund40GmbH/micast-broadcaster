@@ -76,11 +76,3 @@ impl Builder {
     }
 }
 
-
-
-/* .set_server_ip("224.1.1.1")
-        .set_clock_port(8555)
-        .set_rtp_port(5000)
-        .set_rtcp_port(5001)
-        .set_rtcp_receive_port(5007)
-        */
