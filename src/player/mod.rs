@@ -3,7 +3,7 @@ use gstreamer as gst;
 use gst::prelude::*;
 use gstreamer_net as gst_net;
 use log::{debug};
-
+use anyhow::{anyhow};
 
 
 use std::str::FromStr;
@@ -20,6 +20,8 @@ const LATENCY:i32 = 700;
 /// Simple Playback Client for Playback RTP Server Stream
 pub struct PlaybackClient {
     pub pipeline: gst::Pipeline,
+    output: gst::Element,
+    convert: gst::Element,
     clock: gst_net::NetClientClock,
 }
 
@@ -43,7 +45,7 @@ impl PlaybackClient {
     ) -> Result<PlaybackClient, anyhow::Error> {
         let _ = gst::init();
 
-        let (pipeline, clock) = create_pipeline(
+        let (pipeline, clock, convert, output) = create_pipeline(
             clock_ip,
             server_ip, 
             clock_port,
@@ -53,10 +55,16 @@ impl PlaybackClient {
             latency,
         )?;
 
+        // add watch
+        let bus = pipeline.bus().unwrap();
+        bus.add_signal_watch();
+
         Ok(
             PlaybackClient { 
                 pipeline,
                 clock,
+                convert,
+                output,
             }
         )
 
@@ -65,13 +73,39 @@ impl PlaybackClient {
 
     pub fn start(&self) {
 
-        let bus = self.pipeline.bus().unwrap();
         let _ = self.pipeline.set_state(gst::State::Playing);
-        bus.add_signal_watch();
-
         let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
         self.pipeline.set_start_time(gst::ClockTime::NONE);
 
+    }
+
+    pub fn change_output(&mut self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
+        
+        debug!("change_output, creates new element {}, with : {:?}", element, device);
+        let sink = gst::ElementFactory::make(element, None)?;
+
+        if let Some(d) = device {
+            sink.set_property("device", d)?;
+        }
+
+        debug!("set pipeline to paused");
+        self.pipeline.set_state(gst::State::Paused)?;
+
+        self.pipeline.set_state(gst::State::Null)?;
+
+
+        debug!("unlink and remove old output");
+        self.convert.unlink(&self.output);
+        self.pipeline.remove(&self.output)?;
+
+        debug!("add and link new output");
+        self.pipeline.add(&sink)?;
+        self.convert.link(&sink)?;
+
+        self.output = sink;
+
+        Ok(())
+    
     }
 }
 
@@ -85,7 +119,7 @@ fn create_pipeline(
     rtcp_recv_port: i32, 
     rtcp_send_port: i32,
     latency: Option<i32>,
-) ->  Result<(gst::Pipeline, gst_net::NetClientClock), anyhow::Error> {
+) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
@@ -174,5 +208,5 @@ fn create_pipeline(
     pipeline.use_clock(Some(&clock));
     pipeline.set_latency(Some(gst::ClockTime::from_mseconds(latency.unwrap_or(LATENCY) as u64)));
 
-    Ok((pipeline, clock))
+    Ok((pipeline, clock, convert, sink))
 }

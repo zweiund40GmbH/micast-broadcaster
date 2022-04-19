@@ -29,9 +29,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
-    std::thread::sleep(std::time::Duration::from_millis(20000));
-    broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m13.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
-    broadcaster.early_crossfade();
+    //std::thread::sleep(std::time::Duration::from_millis(20000));
+    //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m13.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //broadcaster.early_crossfade();
     
     
 
