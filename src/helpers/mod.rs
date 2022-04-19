@@ -15,7 +15,15 @@ macro_rules! upgrade_weak {
     };
 }
 
+// simple thread sleep helper
+macro_rules! sleep_ms {
+    ($r:expr) => {{
+        std::thread::sleep(std::time::Duration::from_millis($r));
+    }};
+}
+
 pub(crate) use upgrade_weak;
+pub(crate) use sleep_ms;
 
 
 // help make to help faster elements

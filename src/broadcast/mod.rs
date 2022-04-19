@@ -302,7 +302,7 @@ impl Broadcast {
             if retry_count >= 20 {
                 bail!("after retry multiple times: Item is not Prepared");
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            sleep_ms!(100);
         }
 
         if item.audio_pad().is_none() {

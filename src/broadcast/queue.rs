@@ -4,6 +4,8 @@ use std::sync::RwLock;
 use std::sync::Arc;
 use log::{debug};
 
+use crate::helpers::sleep_ms;
+
 #[derive(Debug)]
 pub struct Queue {
     inner: RwLock<Vec<Arc<super::Item>>>,
@@ -59,7 +61,7 @@ impl Queue {
                 debug!("no prepared items found, put we have some unknowns... we wait 500millis");
                 if retry_count.unwrap() > 0 {
                     let r = retry_count.unwrap();
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    sleep_ms!(500);
                     return self.next_check(Some(r - 1))
                 }
             }
