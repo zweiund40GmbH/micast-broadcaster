@@ -346,7 +346,7 @@ impl Broadcast {
         rtcp_sink.set_property("host", server_address)?;
         rtcp_src.set_property( "address", server_address)?;
         self.pipeline.set_state(gst::State::Playing)?;
-        
+
         Ok(())
     }
 
@@ -413,7 +413,7 @@ impl Broadcast {
     }
     
     // play a spot
-    pub fn play_spot(&mut self, uri: &str) -> Result<(), anyhow::Error> {
+    pub fn play_spot(&self, uri: &str) -> Result<(), anyhow::Error> {
   
 
         let mixer = &self.mainmixer;
