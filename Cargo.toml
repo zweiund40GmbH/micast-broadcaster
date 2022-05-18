@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+memchr = "2.3.3"
 gstreamer = { version = "^0.17", features = ["v1_16"] }
 gstreamer-net = { version = "^0.17", features = ["v1_16"] }
 gstreamer-controller = { version = "^0.17", features = ["v1_16"] }

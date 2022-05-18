@@ -377,6 +377,7 @@ dependencies = [
  "gstreamer-controller",
  "gstreamer-net",
  "log",
+ "memchr",
  "quick-xml",
  "serde",
 ]
