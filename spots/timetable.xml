@@ -4,7 +4,7 @@
         start="2022-05-14T17:00:00" 
         end="2022-06-01T23:59:00"
     >
-        <schedules start="11:01" end="22:00" weekdays="Mon-Fri,Sun" interval="2h"/>
+        <schedules start="12:45" end="22:00" weekdays="Mon-Fri,Sun" interval="2h"/>
         <schedules start="08:00" end="22:00" weekdays="Sat" interval="4h"/>
 
     </spots>
@@ -13,7 +13,7 @@
         start="2022-05-14T08:00:00" 
         end="2022-06-01T23:59:00">
        
-        <schedules start="08:00" end="12:00" weekdays="Mon-Fri" interval="3m" />
+        <schedules start="08:00" end="13:00" weekdays="Mon-Fri" interval="3m" />
 
     </spots>
     
@@ -22,7 +22,7 @@
         start="2022-05-14T17:00:00" 
         end="2022-06-01T23:59:00">
        
-        <schedules start="11:02" weekdays="Mon-Fri" />
+        <schedules start="12:46" weekdays="Mon-Fri" />
 
     </spots>
 </TimeTable>

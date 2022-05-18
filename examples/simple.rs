@@ -40,16 +40,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         .set_rtcp_receive_port(5007)
         .build_server()?;
 
-    
-
-    std::thread::sleep(std::time::Duration::from_millis(5000));
     broadcaster.start()?;
-    std::thread::sleep(std::time::Duration::from_millis(5000));
 
     broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
+    std::thread::sleep(std::time::Duration::from_millis(10000));
+    broadcaster.set_server_address("224.1.2.1")?;
 
-    
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    broadcaster.set_server_address("224.1.1.1")?;
     
     //std::thread::sleep(std::time::Duration::from_millis(5000));
     //broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;

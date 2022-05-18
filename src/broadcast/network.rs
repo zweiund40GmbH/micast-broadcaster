@@ -43,9 +43,9 @@ pub fn create_bin(
 
     // network and transport
     let rtpbin = make_element("rtpbin", None)?;
-    let rtp_udp_sink = make_element("udpsink", None)?;
-    let rtcp_udp_sink = make_element("udpsink", None)?;
-    let rtcp_udp_src = make_element("udpsrc", None)?;
+    let rtp_udp_sink = make_element("udpsink",   Some("network_rtp_sink"))?;
+    let rtcp_udp_sink = make_element("udpsink",  Some("network_rtcp_sink"))?;
+    let rtcp_udp_src = make_element("udpsrc",    Some("network_rtcp_src"))?;
 
     bin.add_many(&[&rtpbin, &rtp_udp_sink, &rtcp_udp_sink, &rtcp_udp_src])?;
 
