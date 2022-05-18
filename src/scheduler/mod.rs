@@ -59,6 +59,8 @@ impl Scheduler {
     pub fn process(&mut self, spots: parser::TimeTable, for_date: DateTime<Local>) -> Result<(), anyhow::Error> {
         // get all valid spots (valid means they should allowed and activated for this day)
         // look at 'is_valid' in parser::Spot struct
+        //let for_date = for_date + chrono::Duration::hours(2);
+
         let spots:Vec<parser::Spot> = spots.spots.into_iter().filter(|spot| spot.is_valid(for_date)).collect();
 
         for spot in spots {
@@ -102,6 +104,42 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spots_date_tests() {
+        let s = r#"<TimeTable>
+            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+                <schedules start="10:30" end="22:00" weekdays="Mon" interval="2h"/>
+            </spots>
+        </TimeTable>"#;
+
+        let local_time = Local.ymd(2022, 4, 4).and_hms(10, 29, 00);
+
+        //println!("local_time: {}", local_time);
+        let out = Scheduler::from_str(&s, local_time).unwrap();
+
+        //println!("output: {:?}", out);
+
+        assert!(out.spots.len() > 0);
+    }
+
+    #[test]
+    fn spots_date_tests_2() {
+        let s = r#"<TimeTable>
+            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+                <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
+            </spots>
+        </TimeTable>"#;
+
+        let local_time = Local.ymd(2022, 4, 4).and_hms(10, 29, 00);
+
+        //println!("local_time: {}", local_time);
+        let out = Scheduler::from_str(&s, local_time).unwrap();
+
+        //println!("output: {:?}", out);
+
+        assert_eq!(out.spots[0].runs_at.len(), 6);
+    }
 
     #[test]
     fn spots_load() {

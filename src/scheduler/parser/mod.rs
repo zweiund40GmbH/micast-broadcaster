@@ -36,17 +36,23 @@ impl Spot {
 }
 
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct Schedule {
     #[serde(with = "custom_serde::hourminutes")]
     pub start: Option<(u16,u16)>,
+
+    #[serde(default)]
     #[serde(with = "custom_serde::hourminutes")]
     pub end: Option<(u16,u16)>,
 
     #[serde(with = "custom_serde::weekaler")]
     pub weekdays: Vec<Weekday>,
+
+    #[serde(default)]
     pub interval: String,
 }
+
+
 
 impl Schedule {
     //check if current spot is in a valid range between start and end
@@ -57,19 +63,20 @@ impl Schedule {
         let current_minute = now.minute() as u16;
 
         if self.weekdays.contains(&current_weekday) {
-            if let Some(start) = self.start {
-                if current_hour > start.0 || (start.0 == current_hour && current_minute >= start.1) {
-                    if let Some(end) = self.end {
-                        if current_hour < end.0 || (current_hour == end.0 && current_minute <= end.1) {
-                            return true;
-                        } 
-                    } else {
-                        return true;
-                    }
+
+            if self.start.is_some() {
+                
+                //if current_hour > start.0 || (start.0 == current_hour && current_minute >= start.1) {
+                if let Some(end) = self.end {
+                    if current_hour > end.0 || (current_hour == end.0 && current_minute >= end.1) {
+                        return false;
+                    } 
                 }
-            } else {
-                return true;
+                
+                
             }
+
+            return true;
         }
 
         false
