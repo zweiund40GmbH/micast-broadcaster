@@ -28,10 +28,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("spots timezone: {:?}",Local::now());
 
-    let scheduler = Scheduler::from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml", Local::now())?;
-    let mut spots = scheduler.sort();
-
-    println!("spots to play: {:?}", spots);
+    let mut scheduler = Scheduler::new();
+    scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
+    
     
     let mut broadcaster = broadcast::Builder::new()
         .set_server_ip("224.1.1.1")
@@ -56,28 +55,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("start spot list:");
     loop {
         std::thread::sleep(std::time::Duration::from_millis(1000));
-
-        if spots.len() > 0 {
-            let next_spot = &spots[0];
-            let now = Utc::now();
-            
-            // window of next spot - 1 minute and next_spot + 1 minute
-
-            if now > next_spot.runs_at + chrono::Duration::minutes(1) {
-                // remove it
-                spots.remove(0);
-                continue;
+        if !broadcaster.spot_is_running() {
+            if let Ok(spot) = scheduler.next(Local::now()) {
+                broadcaster.play_spot(&spot.uri)?;
             }
-
-            if now >= next_spot.runs_at && now < next_spot.runs_at + chrono::Duration::minutes(1) {
-                let next_spot = spots.remove(0);
-                if !broadcaster.spot_is_running() {
-                    broadcaster.play_spot(next_spot.uri)?;
-                }
-            }
-
         }
-        
     }
 
     //main_loop.run();

@@ -12,7 +12,7 @@ pub struct TimeTable {
     pub(crate) spots: Vec<Spot>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Spot {
     pub uri: String,
     pub start: NaiveDateTime,
@@ -36,7 +36,7 @@ impl Spot {
 }
 
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default, Clone)]
 pub struct Schedule {
     #[serde(with = "custom_serde::hourminutes")]
     pub start: Option<(u16,u16)>,
@@ -113,8 +113,9 @@ impl Schedule {
             return Some(generated_intervals)
         }
 
+        let endtime = NaiveTime::from_hms(end_point.0, end_point.1, 0);
         // be sure we generate no intervals after the end_point
-        while today == now.day() && (now.hour() < end_point.0 || (now.hour() == end_point.0 && now.minute() <= end_point.0))  {
+        while today == now.day() && now.time() <= endtime  {
             generated_intervals.push(now);
 
             match type_of_interval {
@@ -180,6 +181,23 @@ mod tests {
         let intis = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(8, 59, 00));
         let r = intis.unwrap_or(Vec::new());
         println!("generated intervals: {:?} len:{}", &r, &r.len());
+        assert_eq!(r.len(), 20);
+    }
+
+    #[test]
+    fn generate_intervals_over_end() {
+        let s =Schedule {
+            start: Some((7,00).into()),
+            end: Some((22,00).into()),
+            weekdays: vec![Weekday::Mon, Weekday::Tue, Weekday::Fri],
+            interval: "5m".to_string(),
+        };
+
+        let intis = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(22,05, 00));
+        let r = intis.unwrap_or(Vec::new());
+        println!("generated intervals: {:?} len:{}", &r, &r.len());
+
+        assert_eq!(r.len(), 0);
     }
 
 
