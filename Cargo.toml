@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 
-memchr = "2.3.3"
+memchr = "^2.5"
 gstreamer = { version = "^0.17", features = ["v1_16"] }
 gstreamer-net = { version = "^0.17", features = ["v1_16"] }
 gstreamer-controller = { version = "^0.17", features = ["v1_16"] }
