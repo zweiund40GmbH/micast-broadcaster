@@ -15,15 +15,20 @@ pub struct SpotsDoc {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Spot {
     pub uri: String,
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
+    pub start: NaiveDateTime,
+    pub end: NaiveDateTime,
     pub schedules: Vec<Schedule>,
 }
 
 impl Spot {
     //check if current spot is in a valid range between start and end
-    pub(crate) fn is_valid(&self, for_date: DateTime<Utc>) -> bool {
-        if self.start <= for_date && self.end >= for_date {
+    pub(crate) fn is_valid(&self, for_date: DateTime<Local>) -> bool {
+
+        let start = Local.from_local_datetime(&self.start).unwrap();
+        let end = Local.from_local_datetime(&self.end).unwrap();
+        //let start = DateTime::<Local>::from_utc(self.start, Local);
+
+        if start <= for_date && end >= for_date {
             return true
         } 
         false
@@ -45,7 +50,7 @@ pub struct Schedule {
 
 impl Schedule {
     //check if current spot is in a valid range between start and end
-    pub fn is_valid(&self, for_date: DateTime<Utc>) -> bool {
+    pub fn is_valid(&self, for_date: DateTime<Local>) -> bool {
         let now = for_date;
         let current_weekday = now.weekday();
         let current_hour = now.hour() as u16;
@@ -73,7 +78,7 @@ impl Schedule {
     /// generate a list of intervals for in 'for_date' specific date
     /// 
     /// should return non if for this day nothing valid intervals are found
-    pub fn generate_intervals(&self, for_date: DateTime<Utc>) -> Option<Vec<DateTime<Utc>>> {
+    pub fn generate_intervals(&self, for_date: DateTime<Local>) -> Option<Vec<DateTime<Local>>> {
 
         let start_point = self.start.unwrap_or((0,0));
         let mut now = for_date.date().and_hms(start_point.0 as u32,start_point.1 as u32,0);
@@ -84,9 +89,9 @@ impl Schedule {
             (a.0 as u32, a.1 as u32)
         };
         
-        let mut generated_intervals: Vec<DateTime<Utc>> = Vec::new();
+        let mut generated_intervals: Vec<DateTime<Local>> = Vec::new();
 
-        //TODO: no interval
+        
 
         let (interval, type_of_interval) = {
             let mut interval_string = self.interval.to_string();
@@ -95,6 +100,11 @@ impl Schedule {
 
             (unparsed_int.parse::<i64>().unwrap_or(0), type_of_interval)
         };
+
+        if interval == 0 {
+            generated_intervals.push(now);
+            return Some(generated_intervals)
+        }
 
         // be sure we generate no intervals after the end_point
         while today == now.day() && (now.hour() < end_point.0 || (now.hour() == end_point.0 && now.minute() <= end_point.0))  {
@@ -160,9 +170,49 @@ mod tests {
             interval: "40m".to_string(),
         };
 
-        let intis = s.generate_intervals(Utc.ymd(2022, 6, 1).and_hms(8, 59, 00));
+        let intis = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(8, 59, 00));
         let r = intis.unwrap_or(Vec::new());
         println!("generated intervals: {:?} len:{}", &r, &r.len());
+    }
+
+
+    #[test]
+    fn generate_intervals_with_no_interval_settings() {
+        let s =Schedule {
+            start: Some((7,33).into()),
+            end: Some((22,15).into()),
+            weekdays: vec![Weekday::Mon, Weekday::Tue, Weekday::Fri],
+            interval: "".to_string(),
+        };
+
+        let out = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(8, 59, 00)).unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], Local.ymd(2022, 6, 1).and_hms(7,33,0));
+
+
+        let s =Schedule {
+            start: Some((7,33).into()),
+            end: None,
+            weekdays: vec![Weekday::Mon, Weekday::Tue, Weekday::Fri],
+            interval: "".to_string(),
+        };
+
+        let out = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(8, 59, 00)).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], Local.ymd(2022, 6, 1).and_hms(7,33,0));
+
+        let s =Schedule {
+            start: Some((7,33).into()),
+            end: None,
+            weekdays: Vec::new(),
+            interval: "".to_string(),
+        };
+
+        let out = s.generate_intervals(Local.ymd(2022, 6, 1).and_hms(8, 59, 00)).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], Local.ymd(2022, 6, 1).and_hms(7,33,0));
+        
     }
 
     #[test]
@@ -171,8 +221,8 @@ mod tests {
             spots: vec![
                 Spot { 
                     uri: "file:///test.mp3".to_string(),
-                    start: Utc.ymd(2022, 4, 1).and_hms(17, 00, 00),
-                    end: Utc.ymd(2022, 6, 1).and_hms(23, 59, 00),
+                    start: NaiveDate::from_ymd(2022, 4, 1).and_hms(17, 00, 00),
+                    end: NaiveDate::from_ymd(2022, 6, 1).and_hms(23, 59, 00),
                     schedules: vec![
                         Schedule {
                             start: Some((7,33).into()),
@@ -199,13 +249,13 @@ mod tests {
 
         let out = quick_xml::se::to_string(&s).unwrap();
 
-        assert_eq!(out, r#"<SpotsDoc><spots uri="file:///test.mp3" start="2022-04-01T17:00:00Z" end="2022-06-01T23:59:00Z"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></SpotsDoc>"#);
+        assert_eq!(out, r#"<SpotsDoc><spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></SpotsDoc>"#);
     }
 
     #[test]
     fn scheduler_string_to_xml() {
         let s = r#"<SpotsDoc>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00Z" end="2022-06-01T23:59:00Z">
+            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/>
@@ -218,8 +268,8 @@ mod tests {
             spots: vec![
                 Spot { 
                     uri: "file:///test.mp3".to_string(),
-                    start: Utc.ymd(2022, 4, 1).and_hms(17, 00, 00),
-                    end: Utc.ymd(2022, 6, 1).and_hms(23, 59, 00),
+                    start: NaiveDate::from_ymd(2022, 4, 1).and_hms(17, 00, 00),
+                    end: NaiveDate::from_ymd(2022, 6, 1).and_hms(23, 59, 00),
                     schedules: vec![
                         Schedule {
                             start: Some((7,33).into()),
