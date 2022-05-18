@@ -8,7 +8,7 @@ use chrono::prelude::*;
 use chrono::Duration;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct SpotsDoc {
+pub struct TimeTable {
     pub(crate) spots: Vec<Spot>,
 }
 
@@ -137,22 +137,22 @@ impl Schedule {
 
 
 //load_spots loading a xml file with spots and the scheduling
-pub fn from_file(path: &str) -> Result<SpotsDoc,anyhow::Error> {
+pub fn from_file(path: &str) -> Result<TimeTable,anyhow::Error> {
     use std::io::BufReader;
     use std::fs::File;
 
     let f = File::open(path)?;
     let f = BufReader::new(f);
 
-    let spots: SpotsDoc = from_reader(f)?;
+    let spots: TimeTable = from_reader(f)?;
 
     Ok(spots)
 }
 
 //load_spots loading a xml string with spots and the scheduling
-pub fn from_str(data: &str) -> Result<SpotsDoc,anyhow::Error> {
+pub fn from_str(data: &str) -> Result<TimeTable,anyhow::Error> {
 
-    let spots: SpotsDoc = quick_xml::de::from_str(data)?;
+    let spots: TimeTable = quick_xml::de::from_str(data)?;
 
     Ok(spots)
 }
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn scheduler_xml_to_string() {
-        let s = SpotsDoc {
+        let s = TimeTable {
             spots: vec![
                 Spot { 
                     uri: "file:///test.mp3".to_string(),
@@ -249,22 +249,22 @@ mod tests {
 
         let out = quick_xml::se::to_string(&s).unwrap();
 
-        assert_eq!(out, r#"<SpotsDoc><spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></SpotsDoc>"#);
+        assert_eq!(out, r#"<TimeTable><spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></TimeTable>"#);
     }
 
     #[test]
     fn scheduler_string_to_xml() {
-        let s = r#"<SpotsDoc>
+        let s = r#"<TimeTable>
             <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/>
             </spots>
-        </SpotsDoc>"#;
+        </TimeTable>"#;
 
-        let out: SpotsDoc = from_str(&s).unwrap();
+        let out: TimeTable = from_str(&s).unwrap();
 
-        assert_eq!(out, SpotsDoc {
+        assert_eq!(out, TimeTable {
             spots: vec![
                 Spot { 
                     uri: "file:///test.mp3".to_string(),

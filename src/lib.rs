@@ -12,6 +12,6 @@ pub mod broadcast;
 
 pub use player::PlaybackClient;
 pub use broadcast::Broadcast;
-pub use scheduler::SpotIntervals;
+pub use scheduler::Scheduler;
 
 

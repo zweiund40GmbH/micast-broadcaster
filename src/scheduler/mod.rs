@@ -3,7 +3,7 @@ mod parser;
 use chrono::prelude::*;
 
 #[derive(Debug)]
-pub struct SpotIntervals {
+pub struct Scheduler {
     spots: Vec<Spot>,
 }
 
@@ -19,36 +19,36 @@ pub struct ScheduledSpot<'a> {
     pub runs_at: DateTime<Local>,
 }
 
-impl SpotIntervals {
+impl Scheduler {
 
     /// Create a new Spot list for a specific date from a file
     /// 
     /// should return a Result with all Spots for this given daten and all intervals
-    pub fn from_file(path: &str, for_date: DateTime<Local>) -> Result<SpotIntervals, anyhow::Error> {
+    pub fn from_file(path: &str, for_date: DateTime<Local>) -> Result<Scheduler, anyhow::Error> {
         let parsed_spots = parser::from_file(path)?;
 
-        let mut spot_intervals = SpotIntervals {
+        let mut scheduler = Scheduler {
             spots: Vec::new(),
         };
 
-        spot_intervals.process(parsed_spots, for_date)?;
+        scheduler.process(parsed_spots, for_date)?;
 
-        Ok(spot_intervals)
+        Ok(scheduler)
     }
 
     /// Create a new Spot list from a str
     /// 
     /// should return a Result with all Spots for this given daten and all intervals
-    pub fn from_str(data: &str, for_date: DateTime<Local>) -> Result<SpotIntervals, anyhow::Error> {
+    pub fn from_str(data: &str, for_date: DateTime<Local>) -> Result<Scheduler, anyhow::Error> {
         let parsed_spots = parser::from_str(data)?;
 
-        let mut spot_intervals = SpotIntervals {
+        let mut scheduler = Scheduler {
             spots: Vec::new(),
         };
 
-        spot_intervals.process(parsed_spots, for_date)?;
+        scheduler.process(parsed_spots, for_date)?;
 
-        Ok(spot_intervals)
+        Ok(scheduler)
     }
 
     /// ##process
@@ -56,7 +56,7 @@ impl SpotIntervals {
     /// - processing parsed spots.
     /// - filter out all spots outside of given for_date date
     /// - generate all intervals
-    pub fn process(&mut self, spots: parser::SpotsDoc, for_date: DateTime<Local>) -> Result<(), anyhow::Error> {
+    pub fn process(&mut self, spots: parser::TimeTable, for_date: DateTime<Local>) -> Result<(), anyhow::Error> {
         // get all valid spots (valid means they should allowed and activated for this day)
         // look at 'is_valid' in parser::Spot struct
         let spots:Vec<parser::Spot> = spots.spots.into_iter().filter(|spot| spot.is_valid(for_date)).collect();
@@ -106,13 +106,13 @@ mod tests {
     #[test]
     fn spots_load() {
         // 2022-04-04 10:30:00 ist ein Montag
-        let s = r#"<SpotsDoc>
+        let s = r#"<TimeTable>
             <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
-        </SpotsDoc>"#;
+        </TimeTable>"#;
 
-        let out: SpotIntervals = SpotIntervals::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
+        let out = Scheduler::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
 
         assert_eq!(out.spots[0].runs_at, vec!(
             Local.ymd(2022, 4, 4).and_hms(11, 00, 00),
@@ -124,13 +124,13 @@ mod tests {
         ));
 
         // 2022-04-04 10:30:00 ist ein Montag
-        let s = r#"<SpotsDoc>
+        let s = r#"<TimeTable>
             <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
-        </SpotsDoc>"#;
+        </TimeTable>"#;
 
-        let out: SpotIntervals = SpotIntervals::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
+        let out = Scheduler::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
 
         assert_eq!(out.spots[0].runs_at, vec!(
             Local.ymd(2022, 4, 4).and_hms(13, 20, 00),
@@ -138,14 +138,14 @@ mod tests {
             Local.ymd(2022, 4, 4).and_hms(21, 20, 00),
         ));
 
-        let s = r#"<SpotsDoc>
+        let s = r#"<TimeTable>
             <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
-        </SpotsDoc>"#;
+        </TimeTable>"#;
 
-        let out: SpotIntervals = SpotIntervals::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
+        let out = Scheduler::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
 
         assert_eq!(out.spots[0].runs_at, vec!(
             Local.ymd(2022, 4, 4).and_hms(11, 00, 00),
@@ -163,16 +163,16 @@ mod tests {
     #[test]
     fn spots_sort() {
 
-        let s = r#"<SpotsDoc>
+        let s = r#"<TimeTable>
             <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
             <spots uri="file:///ab_9_2.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
-        </SpotsDoc>"#;
+        </TimeTable>"#;
 
-        let out: SpotIntervals = SpotIntervals::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
+        let out = Scheduler::from_str(&s, Local.ymd(2022, 4, 4).and_hms(10, 30, 00)).unwrap();
 
         let sorted_output = out.sort();
 
