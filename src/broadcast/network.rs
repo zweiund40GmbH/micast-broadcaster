@@ -35,7 +35,8 @@ pub fn create_bin(
     let payloader = make_element("rtpL24pay", Some("pay0"))?;
     bin.add_many(&[&capsfilter, &payloader])?;
     let caps = gst::Caps::builder("audio/x-raw")
-        .field("rate", &48000i32)
+        //.field("rate", &48000i32)
+        .field("rate", &44100i32)
         .build();
     capsfilter.set_property("caps", &caps).unwrap();     
     gst::Element::link_many(&[&capsfilter, &payloader])?;

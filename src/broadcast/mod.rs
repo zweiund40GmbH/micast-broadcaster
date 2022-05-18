@@ -10,10 +10,15 @@ use item::{Item, ItemState};
 
 use gstreamer as gst;
 use gstreamer_net as gst_net;
+use gstreamer_controller as gst_controller;
+
 use crate::helpers::*;
 
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Weak, RwLock};
 use gst::prelude::*;
+use gst_controller::prelude::*;
+
+
 use anyhow::{bail};
 
 use log::{debug, warn};
@@ -26,6 +31,14 @@ pub struct Broadcast(Arc<BroadcastInner>);
 #[derive(Debug, Clone)]
 pub(crate) struct BroadcastWeak(Weak<BroadcastInner>);
 
+
+struct SenderCommand {
+    uri: String,
+    volume: f32,
+}
+
+
+
 // Actual broadcast server state
 #[derive(Debug)]
 pub struct BroadcastInner {
@@ -34,6 +47,12 @@ pub struct BroadcastInner {
     #[allow(unused_parens, dead_code)]
     clock_provider: gst_net::NetTimeProvider,
     playback_queue: Queue,
+
+    commands_tx: glib::Sender<SenderCommand>,
+    mainmixer: gst::Element,
+    running_time: RwLock<gst::ClockTime>,
+    current_spot: RwLock<Option<item::Item>>,
+    volumecontroller_audiomixer_stream: gst_controller::InterpolationControlSource,
 }
 
 // To be able to access the App's fields directly
@@ -82,19 +101,36 @@ impl Broadcast {
         anyhow::Error,
     > {
 
+
         debug!("init gstreamer");
         gst::init()?;
+
+
+        // Get a main context...
+        let main_context = glib::MainContext::default();
+        // ... and make it the main context by default so that we can then have a channel to send the
+        // commands we received from the terminal.
+        let _guard = main_context.acquire().unwrap();
+
+        // Build the channel to get the terminal inputs from a different thread.
+        let (commands_tx, ready_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+
 
         debug!("create pipeline, add clock, add adder as mixer, and audioconverter for preconvert");
         // create pipeline
         let pipeline = gst::Pipeline::new(None);
-
-
+        
+        let pipeline_weak = pipeline.downgrade();
         let bus = pipeline.bus().expect("Pipeline without bus should never happen");
         
         bus.add_watch(move |_, msg| {
             use gst::MessageView;
-    
+            
+            let pipeline = match pipeline_weak.upgrade() {
+                Some(pipeline) => pipeline,
+                None => return glib::Continue(false),
+            };
+
             match msg.view() {
                 MessageView::Eos(..) => {
                     warn!("received eos");
@@ -112,9 +148,18 @@ impl Broadcast {
                     // currently we need to panic here.
                     // the program who use this lib, would then automatically restart.
                     // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
-                    panic!("got an error, quit here");
+                    warn!("got an error, quit here");
+                    let _ = pipeline.set_state(gst::State::Paused);
+                    let _ = pipeline.set_state(gst::State::Playing);
                     
                 }
+                MessageView::ClockLost(_) => {
+                    warn!("ClockLost... get a new clock");
+                    // Get a new clock.
+                    let _ = pipeline.set_state(gst::State::Paused);
+                    let _ = pipeline.set_state(gst::State::Playing);
+                }
+    
                 _ => (),
             };
     
@@ -131,14 +176,35 @@ impl Broadcast {
         clock.set_property("clock-type", &gst::ClockType::Realtime)?;
         pipeline.use_clock(Some(&clock));
 
+        // setup audiomixer for broadcast schedule notifications or advertising
+        let mainmixer = make_element("audiomixer", Some("main_mixer"))?;
+        let mainmixer_converter = make_element("audioconvert", Some("main_converter"))?;
+        let audiomixer_queue = make_element("queue", Some("audiomixer_queue"))?;
+        pipeline.add(&mainmixer)?;
+        pipeline.add(&mainmixer_converter)?;
+        pipeline.add(&audiomixer_queue)?;
+        gst::Element::link_many(&[&mainmixer, &mainmixer_converter])?;
+        gst::Element::link_many(&[&mainmixer_converter, &audiomixer_queue])?;
+
+
+        
+
+
         // setup the audio mixer as input for Pipeline
         let audiomixer = make_element("adder", Some("mixer"))?;
-        let audiomixer_convert = make_element("audioconvert", None)?;
+        let audiomixer_convert = make_element("audioconvert", Some("adder_audioconverter"))?;
+        
         // -- add mixer and converter to element
         pipeline.add(&audiomixer)?;
         pipeline.add(&audiomixer_convert)?;
+        
         // -- linkt this elements
         gst::Element::link_many(&[&audiomixer, &audiomixer_convert])?;
+
+
+        // Volume control for spot playback
+        let volumecontroller_audiomixer_stream = gst_controller::InterpolationControlSource::new();
+        volumecontroller_audiomixer_stream.set_mode(gst_controller::InterpolationMode::Linear);
 
         // create network things
         let sender_bin = self::network::create_bin(
@@ -149,31 +215,89 @@ impl Broadcast {
         )?;
         // -- add senderbin to pipeline
         pipeline.add(&sender_bin)?;
-        // -- link the output of audiomixer to input of the sender_bin
-        audiomixer_convert.link_pads(Some("src"), &sender_bin, Some("sink"))?;
+        
+        // -- link the output of mainmixer to input of the sender_bin
+        audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
 
         pipeline.set_state(gst::State::Playing)?;
 
+        // downgrade pipeline for ready_rx receiver for sendercommands
+        let pipeline_weak = pipeline.downgrade();
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             clock_provider,
             playback_queue: Queue::new(),
+            commands_tx,
+            volumecontroller_audiomixer_stream: volumecontroller_audiomixer_stream.clone(),
+            mainmixer: mainmixer.clone(),
+            running_time: RwLock::new(gst::ClockTime::ZERO),
+            current_spot: RwLock::new(None),
         }));
 
+        // request pad for adding the audiomixer_convert to mainmixer
+        if let Some(sinkpad) = mainmixer.request_pad_simple("sink_%u") { 
+            // add a runningtime_probe........
+            //gst_pad_add_probe (sinkpad, GST_PAD_PROBE_TYPE_BUFFER,
+            //    (GstPadProbeCallback) crossfade_item_pad_probe_running_time, item, NULL);
+            let broadcast_clone = broadcast.downgrade();
+            sinkpad.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
+                let broadcast = upgrade_weak!(broadcast_clone, gst::PadProbeReturn::Pass);
+                if let Some(event) = pad.sticky_event(gst::EventType::Segment, 0) { 
+                    if let Some(data) = &info.data {
+                        if let gst::PadProbeData::Buffer(buffer) = data {
+                            if let gst::EventView::Segment(segment) = event.view() {
+                                match segment.segment().to_running_time(buffer.pts().unwrap()) {
+                                    gst::GenericFormattedValue::Time(Some(clock)) => {
+                                        //debug!("sets main mixer running_time: {}", clock);
+                                        let mut w = broadcast.running_time.write().unwrap();
+                                        *w = clock;
+                                        drop(w);
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
         
-        /*
-        if let Err(e) = broadcast.put_item_to_mixer(&broadcast.silence.audio_pad) {
-            warn!("error on put item to mixer: {:?}", e);
+                gst::PadProbeReturn::Pass
+
+            });
+            
+            debug!("get sinkpad volume: {:?}", sinkpad.property("volume"));
+            let dcb = gst_controller::DirectControlBinding::new_absolute(&sinkpad, "volume", &volumecontroller_audiomixer_stream);
+            sinkpad.add_control_binding(&dcb)?;
+
+
+
+            if let Some(srcpad) = audiomixer_convert.static_pad("src") {
+                srcpad.link(&sinkpad)?;
+            } else {
+                warn!("could not get static srcpad from audiomixer_convert! - possible no output");
+            }
+        } else {
+            warn!("could not get a requested sink_pad from mainmixer! - possible no output");
         }
-        */
         
+
+        ready_rx.attach(Some(&main_context), move |cmd: SenderCommand| {
+            let pipeline = match pipeline_weak.upgrade() {
+                Some(pipeline) => pipeline,
+                None => return glib::Continue(true),
+            };
+
+            // receive command
+            debug!("helloworld: {}", cmd.uri);
+    
+            glib::Continue(true)
+        });
+
 
         Ok(
             broadcast
         )
     }
-
 
     /// Schedule Next Item
     /// 
@@ -194,11 +318,11 @@ impl Broadcast {
         debug!("add item to schedule");
         // create an item to hold all required Informations pad's etc
         let broadcast_clone = self.downgrade();
-        let item = self::item::Item::new(uri, broadcast_clone, fixed_length)?;
+        let item = self::item::Item::new(uri, broadcast_clone, fixed_length, false)?;
         let current = self.playback_queue.current();
         if current.is_none() {
             debug!("queue got nothing, so activate next item");
-            self.activate_item(&item)?;
+            self.activate_item(&item, &self.pipeline.by_name("mixer").unwrap())?;
         }
 
         self.playback_queue.push(item);
@@ -208,6 +332,65 @@ impl Broadcast {
         Ok(())
         
     }
+
+    pub fn spot_is_running(&self) -> bool {
+        let s = self.current_spot.read().unwrap();
+
+        if let Some(spot) = &*s {
+            if spot.state() != item::ItemState::Removed && spot.state() != item::ItemState::Eos {
+                return true
+            }
+        } 
+
+        return false
+    }
+
+    fn end_of_spot(&self, queue_size: u64) {
+
+        debug!("end of spot... get louder!");
+        let start_time = self.running_time.read().unwrap();
+        let c = start_time.clone();
+        drop(start_time);
+
+        let a = self.volumecontroller_audiomixer_stream.clone().upcast::<gst_controller::TimedValueControlSource>();
+        a.set(c, 0.0);
+ 
+        a.set(c + gst::ClockTime::from_nseconds(queue_size), 1.0);
+
+
+    }
+    
+    // play a spot
+    pub fn play_spot(&mut self, uri: &str) -> Result<(), anyhow::Error> {
+  
+
+        let mixer = &self.mainmixer;
+        
+        let a = self.volumecontroller_audiomixer_stream.clone().upcast::<gst_controller::TimedValueControlSource>();
+        
+        let broadcast_clone = self.downgrade();
+        let item = self::item::Item::new(uri, broadcast_clone, None, true)?;
+        self.activate_item(&item, &mixer)?;
+        
+        
+        let start_time = self.running_time.read().unwrap();
+        let c = start_time.clone();
+        drop(start_time);
+
+        a.set(c, 1.0);
+        a.set(c + (((crate::CROSSFADE_TIME_MS / 1000) / 2) * gst::ClockTime::SECOND), 0.0);
+        let s = c.nseconds() as i64;
+
+        item.set_offset(s);
+
+        // current spot needs to resist in memory for accessible by pad events
+        let mut w = self.current_spot.write().unwrap();
+        *w = Some(item);
+        drop(w);
+
+        Ok(())
+    }
+
     
     /// ## Schedule Crossfade on EOS to next item in queue
     /// 
@@ -224,7 +407,7 @@ impl Broadcast {
         } else {
             debug!(" set offset for next item");
             let next_item = next_item_result.unwrap();
-            next_item.set_offset(gst::ClockTime::from_nseconds(queue_size));
+            next_item.set_offset(queue_size as i64);
         }
 
         debug!("end of schedule crossfade");
@@ -245,6 +428,8 @@ impl Broadcast {
                 debug!("could not make early_crossfade, no next items");
             }
         }
+
+
         
     }
 
@@ -261,19 +446,16 @@ impl Broadcast {
 
         if let Some(next) = next {
             // try to activate item from queue
-            self.activate_item(&next)?;
+            self.activate_item(&next, &self.pipeline.by_name("mixer").unwrap())?;
 
             return Ok(next)
         }
-
         bail!("no next item found")
-        
     }
 
 
-    fn put_item_to_mixer(&self, pad: &gst::Pad) -> Result<gst::Pad, anyhow::Error> {
+    fn put_item_to_mixer(&self, pad: &gst::Pad, mixer: &gst::Element) -> Result<gst::Pad, anyhow::Error> {
         
-        let mixer = self.pipeline.by_name("mixer").unwrap();
         if let Some(sinkpad) = mixer.request_pad_simple("sink_%u") { 
             // link audio_pad from item decoder to sinkpad of the mixer
             pad.link(&sinkpad)?;
@@ -292,7 +474,7 @@ impl Broadcast {
     /// - gets the mixer from main pipeline and request a sink_pad and link both together
     /// - sets all callbacks (current runningtime over buffer event) & downstream event for checking eos on item
     /// - at least, if all was successfull, set state to Activate
-    fn activate_item(&self, item: &item::Item) -> Result<(), anyhow::Error> {
+    fn activate_item(&self, item: &item::Item, mixer: &gst::Element) -> Result<(), anyhow::Error> {
 
         let mut retry_count = 0;
         while item.state() != item::ItemState::Prepared {
@@ -315,7 +497,7 @@ impl Broadcast {
 
         let audio_pad = item.audio_pad().unwrap();
 
-        if let Ok(sinkpad) = self.put_item_to_mixer(&audio_pad) {
+        if let Ok(sinkpad) = self.put_item_to_mixer(&audio_pad, mixer) {
             debug!("link audio_pad from {} to mixer {}", item.uri, sinkpad.name());
 
             let item_clone = item.downgrade();

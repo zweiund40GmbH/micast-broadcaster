@@ -64,6 +64,7 @@ pub struct ItemInner {
     broadcast_clone: Option<super::BroadcastWeak>,
     values: RwLock<ShareableValues>,
     max_duration: u32,
+    is_spot: bool,
 }
 
 impl Default for ItemInner {
@@ -74,6 +75,7 @@ impl Default for ItemInner {
             broadcast_clone: None,
             values: RwLock::new(ShareableValues::default()),
             max_duration: 0, // zero means no max duration based on this value, take the real element length
+            is_spot: false,
         }
     }
 }
@@ -110,6 +112,8 @@ impl Item {
         location: &str, 
         broadcast: super::BroadcastWeak,
         fixed_length: Option<u32>,
+        is_spot: bool,
+
         //sender: Sender<gst::ClockTime>
     ) -> Result<Item, anyhow::Error> {
 
@@ -130,6 +134,7 @@ impl Item {
             uri: location.to_string(),
             broadcast_clone: Some(broadcast.clone()),
             max_duration: fixed_length.unwrap_or(0),
+            is_spot: is_spot,
             ..Default::default()
         }));
         
@@ -174,7 +179,7 @@ impl Item {
         
         if let Some(caps) = pad.current_caps() {
             if let Some(structure) = caps.structure(0) {
-                debug!("new pad: {:?}, caps: {:?}", pad, structure.name());
+                debug!("new pad: {:?}, caps: {:?}", pad, structure);
             }
         }
     
@@ -197,13 +202,19 @@ impl Item {
         let audioresample = make_element("audioresample", None)?;
         let audioconvert = make_element("audioconvert", None)?;
         let capsfilter = make_element("capsfilter", None)?;
+
+        let caps = gst::Caps::builder("audio/x-raw")
+            //.field("rate", &48000i32)
+            .field("rate", &44100i32)
+            .build();
+        capsfilter.set_property("caps", &caps)?;     
         
-        self.bin.add_many(&[&audioresample, &audioconvert, &capsfilter])?;
+        self.bin.add_many(&[&audioresample, &capsfilter, &audioconvert, ])?;
     
         let sinkpad = audioresample.static_pad("sink").unwrap();
         pad.link(&sinkpad)?;
     
-        gst::Element::link_many(&[&audioresample, &audioconvert, &capsfilter, &queue])?;
+        gst::Element::link_many(&[&audioresample, &capsfilter, &audioconvert, &queue ])?;
         
         let srcpad = queue.static_pad("src").unwrap();
     
@@ -228,6 +239,7 @@ impl Item {
         let item_clone = self.downgrade();
         audio_pad.add_probe(block_probe_type, move |pad, probe_info| {
             let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
+
             item.pad_probe_blocked(pad, probe_info)
         });
     
@@ -236,7 +248,7 @@ impl Item {
         let fade_queue_sinkpad = queue.static_pad("sink").unwrap();
         
         let audio_pad_probe_going_eos_id = fade_queue_sinkpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, probe_info| {
-            let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
+            let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Pass);
             item.pad_probe_going_eos(pad, probe_info)
         });
 
@@ -265,7 +277,6 @@ impl Item {
         if let Some(data) = &info.data {
             if let gst::PadProbeData::Event(event) = data {
 
-
                 //debug!("event {:?}", event);
                 if event.type_() == gst::EventType::Eos && self.state() != ItemState::EarlyEos  {
                     
@@ -291,12 +302,19 @@ impl Item {
 
                     // here we make some nasty trick to call schedule_crossfade to make a crossfade on the broadcaster
                     let item_clone = self.downgrade();
+                    
                     let broadcast_clone = self.broadcast_clone.as_ref().unwrap();
-                    {
+                    if self.is_spot {
+                        debug!("is a spot... we go to end_of_spot");
+                        let broadcast = upgrade_weak!(broadcast_clone, gst::PadProbeReturn::Pass);
+                        broadcast.end_of_spot(queue_size)
+                    } else {
                         let broadcast = upgrade_weak!(broadcast_clone, gst::PadProbeReturn::Pass);
                         let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Pass);
                         broadcast.schedule_crossfade(&item, queue_size);
                     }
+                    
+                    
 
                     return gst::PadProbeReturn::Remove;
                 }
@@ -460,10 +478,10 @@ impl Item {
     /// the track starts playing at the 2 minute, so goes only 10 seconds and then stops.
     /// 
     /// with the audio_pad offset, of the current rtp stream duration, we ensure that the next track starts at 0.
-    pub fn set_offset(&self, offset: gst::ClockTime) {
+    pub fn set_offset(&self, offset_nseconds: i64) {
         let values = self.values.read().unwrap();
         let audio_pad = values.audio_pad.as_ref().unwrap();
-        audio_pad.set_offset(offset.nseconds() as i64);
+        audio_pad.set_offset(offset_nseconds);
         drop(audio_pad);
         drop(values);
     }
@@ -491,6 +509,7 @@ impl Item {
 
 
     pub fn prepare_for_early_end(&self) {
+        warn!("early eos");
         self.set_state(ItemState::EarlyEos);
 
         if let Err(e) = self.remove_going_eos_probe() {
@@ -509,9 +528,14 @@ impl Item {
         });
 
 
-        let broadcast_clone = self.broadcast_clone.as_ref().unwrap();
-        let broadcast = upgrade_weak!(broadcast_clone);
-        broadcast.schedule_crossfade(&self, 0);
+        if self.is_spot {
+
+        } else {
+            let broadcast_clone = self.broadcast_clone.as_ref().unwrap();
+            let broadcast = upgrade_weak!(broadcast_clone);
+            broadcast.schedule_crossfade(&self, 0);
+        }
+
     }
 
 }
