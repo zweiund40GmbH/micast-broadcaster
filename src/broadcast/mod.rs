@@ -377,14 +377,15 @@ impl Broadcast {
         let c = start_time.clone();
         drop(start_time);
 
+        let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND;
 
         let _ = item.set_volume(crate::MAX_VOLUME_SPOT);
 
         a.set(c, 1.0);
-        a.set(c + (crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND), crate::MIN_VOLUME_BROADCAST);
+        a.set(c + crossfade_time_as_clock, crate::MIN_VOLUME_BROADCAST);
         let s = c.nseconds() as i64;
 
-        item.set_offset(s / 2);
+        item.set_offset(s - (crossfade_time_as_clock.nseconds() as i64) / 2);
 
         // current spot needs to resist in memory for accessible by pad events
         let mut w = self.current_spot.write().unwrap();

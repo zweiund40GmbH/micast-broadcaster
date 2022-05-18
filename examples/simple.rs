@@ -47,9 +47,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     
     
-    std::thread::sleep(std::time::Duration::from_millis(5000));
-    broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;
-    std::thread::sleep(std::time::Duration::from_millis(5000));
+    //std::thread::sleep(std::time::Duration::from_millis(5000));
+    //broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;
+    //std::thread::sleep(std::time::Duration::from_millis(5000));
 
     
 

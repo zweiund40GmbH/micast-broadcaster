@@ -195,7 +195,7 @@ impl Item {
     /// generates a complete pipeline to ensure decodin, and converting is done
     fn decoder_pad_added(&self, pad: &gst::Pad) -> Result<(), anyhow::Error> {
         
-        
+        let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND; 
         if let Some(caps) = pad.current_caps() {
             if let Some(structure) = caps.structure(0) {
                 debug!("new pad: {:?}, caps: {:?}", pad, structure);
@@ -204,7 +204,7 @@ impl Item {
     
         let queue = make_element("queue", Some("fade-queue-%u")).unwrap();
         queue.set_property("max-size-buffers", 0 as u32)?;
-        queue.set_property("max-size-time", &(2*crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND.nseconds()))?;
+        queue.set_property("max-size-time", &(crossfade_time_as_clock.nseconds()))?;
     
         {
             let mut values = self.values.write().unwrap();
