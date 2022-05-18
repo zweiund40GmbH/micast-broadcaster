@@ -2,7 +2,7 @@
 use gstreamer as gst;
 use gst::prelude::*;
 use gstreamer_net as gst_net;
-use log::{debug};
+use log::{debug,warn};
 use anyhow::{anyhow};
 
 
@@ -55,9 +55,68 @@ impl PlaybackClient {
             latency,
         )?;
 
-        // add watch
+        let pipeline_weak = pipeline.downgrade();
+
         let bus = pipeline.bus().unwrap();
-        bus.add_signal_watch();
+
+        bus.add_watch(move |_, msg| {
+            use gst::MessageView;
+    
+            let pipeline = match pipeline_weak.upgrade() {
+                Some(pipeline) => pipeline,
+                None => return glib::Continue(false),
+            };
+
+            
+            match msg.view() {
+                MessageView::Eos(..) => {
+                    warn!("received eos");
+                    // An EndOfStream event was sent to the pipeline, so we tell our main loop
+                    // to stop execution here.
+                }
+                MessageView::Error(err) => {
+                    warn!(
+                        "Error from {:?}: {} ({:?})",
+                        err.src().map(|s| s.path_string()),
+                        err.error(),
+                        err.debug()
+                    );
+
+                    // currently we need to panic here.
+                    // the program who use this lib, would then automatically restart.
+                    // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
+                    panic!("got an error, quit here");
+                    
+                }
+                /*MessageView::Buffering(buffering) => {
+                    // If the stream is live, we do not care about buffering.
+                    /*if is_live {
+                        return glib::Continue(true);
+                    }*/
+    
+                    // Wait until buffering is complete before start/resume playing.
+                    let percent = buffering.percent();
+                    if percent < 100 {
+                        let _ = pipeline.set_state(gst::State::Paused);
+                    } else {
+                        let _ = pipeline.set_state(gst::State::Playing);
+                    }
+                    // /* */ buffering_level.lock().unwrap() = percent;
+                }*/    
+                MessageView::ClockLost(_) => {
+                    warn!("ClockLost... get a new clock");
+                    // Get a new clock.
+                    let _ = pipeline.set_state(gst::State::Paused);
+                    let _ = pipeline.set_state(gst::State::Playing);
+                }
+    
+                _ => (),
+            };
+    
+            // Tell the mainloop to continue executing this callback.
+            glib::Continue(true)
+        })
+        .expect("Failed to add bus watch");
 
         Ok(
             PlaybackClient { 
@@ -127,7 +186,7 @@ fn create_pipeline(
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
-    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)L24")?;
+    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
 
     rtp_src.set_property("caps", &caps)?;
     rtp_src.set_property("port", rtp_port as i32)?;
