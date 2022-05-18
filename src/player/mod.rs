@@ -133,9 +133,64 @@ impl PlaybackClient {
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
+        let _ = self.clock.wait_for_sync(gst::ClockTime::from_seconds(2));
         self.pipeline.set_start_time(gst::ClockTime::NONE);
 
+    }
+
+
+    pub fn stop(&self) {
+
+        let _ = self.pipeline.set_state(gst::State::Paused);
+        let _ = self.pipeline.set_state(gst::State::Null);
+
+    }
+
+    pub fn change_clock_address(&self, address: &str) -> Result<(), anyhow::Error> {
+        self.pipeline.set_state(gst::State::Null)?;
+        self.pipeline.set_state(gst::State::Ready)?;
+        println!("address: {:?}", self.clock.address());
+        self.clock.set_address(Some(address));
+        self.pipeline.use_clock(Some(&self.clock));
+        self.start();
+
+        Ok(())
+    }
+
+    pub fn change_server_address(&self, server_address: &str) -> Result<(), anyhow::Error> {
+
+ 
+        let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
+            Some(elem) => elem,
+            None => { 
+                return Err(anyhow!("rtp_sink not found"))
+            }
+        };
+  
+        let rtcp_senden = match self.pipeline.by_name("rtcp_senden"){
+            Some(elem) => elem,
+            None => { 
+                return Err(anyhow!("rtcp_sink not found"))
+            }
+        };
+
+        let rtp_eingang = match self.pipeline.by_name("rtp_eingang"){
+            Some(elem) => elem,
+            None => { 
+                return Err(anyhow!("rtcp_src not found"))
+            }
+        };
+
+        self.pipeline.set_state(gst::State::Null)?;
+        self.pipeline.set_state(gst::State::Ready)?;
+
+        rtcp_eingang.set_property( "address", server_address)?;
+        rtcp_senden.set_property("host", server_address)?;
+        rtp_eingang.set_property( "address", server_address)?;
+        
+        self.pipeline.set_state(gst::State::Playing)?;
+        
+        Ok(())
     }
 
     pub fn change_output(&mut self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
@@ -207,7 +262,7 @@ fn create_pipeline(
     rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("ntp-sync", &true)?;
-    rtpbin.set_property("autoremove", &true)?;
+    //rtpbin.set_property("autoremove", &true)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
