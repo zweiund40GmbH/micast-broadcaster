@@ -31,6 +31,10 @@ impl Scheduler {
         }
     }
 
+    pub fn get_now() -> DateTime<Local> {
+        Local::now()
+    }
+
     /// Create a new Spot list for a specific date from a file
     /// 
     /// should return a Result with all Spots for this given daten and all intervals
