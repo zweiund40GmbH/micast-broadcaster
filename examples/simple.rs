@@ -41,6 +41,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server()?;
 
     
+
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+    broadcaster.start()?;
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+
     broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
 
