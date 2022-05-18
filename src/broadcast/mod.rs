@@ -353,7 +353,7 @@ impl Broadcast {
         drop(start_time);
 
         let a = self.volumecontroller_audiomixer_stream.clone().upcast::<gst_controller::TimedValueControlSource>();
-        a.set(c, 0.0);
+        a.set(c, crate::MIN_VOLUME_BROADCAST);
  
         a.set(c + gst::ClockTime::from_nseconds(queue_size), 1.0);
 
@@ -377,11 +377,14 @@ impl Broadcast {
         let c = start_time.clone();
         drop(start_time);
 
+
+        let _ = item.set_volume(crate::MAX_VOLUME_SPOT);
+
         a.set(c, 1.0);
-        a.set(c + (((crate::CROSSFADE_TIME_MS / 1000) / 2) * gst::ClockTime::SECOND), 0.0);
+        a.set(c + (crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND), crate::MIN_VOLUME_BROADCAST);
         let s = c.nseconds() as i64;
 
-        item.set_offset(s);
+        item.set_offset(s / 2);
 
         // current spot needs to resist in memory for accessible by pad events
         let mut w = self.current_spot.write().unwrap();
@@ -458,6 +461,7 @@ impl Broadcast {
         
         if let Some(sinkpad) = mixer.request_pad_simple("sink_%u") { 
             // link audio_pad from item decoder to sinkpad of the mixer
+
             pad.link(&sinkpad)?;
 
             return Ok(sinkpad)

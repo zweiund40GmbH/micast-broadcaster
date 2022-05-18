@@ -169,6 +169,25 @@ impl Item {
         Ok(item)
 
     } 
+
+    // sets the volume of the item
+    pub fn set_volume(&self, volume: f64) -> bool {
+
+        if let Some(audio_pad) = self.audio_pad() {
+
+            if let Some(mixer_pad) = audio_pad.peer() {
+                let _mixer = mixer_pad.set_property("volume", volume);
+                return true;
+            } else {
+                warn!("no peer for audio_pad found. (mixer not loaded)")
+            }
+        } else {
+            warn!("audio_pad not loaded");
+        }
+
+        return false;
+
+    }
   
     /// get triggered if the used encoder __uridecodebin__ added a pad
     /// (normaly after initialization)
@@ -185,7 +204,7 @@ impl Item {
     
         let queue = make_element("queue", Some("fade-queue-%u")).unwrap();
         queue.set_property("max-size-buffers", 0 as u32)?;
-        queue.set_property("max-size-time", &(2 * crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND.mseconds()))?;
+        queue.set_property("max-size-time", &(2*crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND.nseconds()))?;
     
         {
             let mut values = self.values.write().unwrap();
@@ -355,36 +374,7 @@ impl Item {
 
         gst::PadProbeReturn::Pass
     }
-    /*
-    static GstPadProbeReturn
-    crossfade_item_pad_probe_when_eos (GstPad * pad, GstPadProbeInfo * info,
-        CrossfadeItem * item)
-    {
-    GstEvent *event;
-    GstBuffer *buffer;
-    GstClockTime stream_time;
-    const GstSegment *segment;
-
-    buffer = GST_PAD_PROBE_INFO_BUFFER (info);
-    event = gst_pad_get_sticky_event (pad, GST_EVENT_SEGMENT, 0);
-    g_assert (event);
-
-    gst_event_parse_segment (event, &segment);
-    stream_time = gst_segment_to_stream_time (segment, GST_FORMAT_TIME,
-        GST_BUFFER_PTS (buffer));
-    gst_event_unref (event);
-
-    if (stream_time >= item->fadeout_end_stream_time) {
-        GST_DEBUG ("%s: fadeout has ended, sending EOS to sinkpad", item->fn);
-        item->state = CROSSFADE_ITEM_STATE_GOING_EOS;
-        gst_pad_push_event (item->audio_pad, gst_event_new_eos ());
-    }
-
-    return GST_PAD_PROBE_PASS;
-    }*/
-
     
-
     /// ## set the current running time for the _item_
     /// 
     /// - lock values to **write**
