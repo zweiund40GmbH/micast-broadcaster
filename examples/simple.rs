@@ -1,4 +1,6 @@
-use micast_broadcaster::broadcast;
+use micast_broadcaster::{broadcast, SpotIntervals};
+
+use chrono::prelude::*;
 
 use log::{debug};
 
@@ -12,7 +14,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     debug!("Start test Broadcaster");
     let main_loop = glib::MainLoop::new(None, false);
 
-    let broadcaster = broadcast::Builder::new()
+    
+    let s = r#"<SpotsDoc>
+            <spots uri="file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3" start="2022-05-14T17:00:00Z" end="2022-06-01T23:59:00Z">
+                <schedules start="19:24" end="23:59" weekdays="Mon,Tue" interval="2h"/>
+            </spots>
+            <spots uri="file:///Users/nico/project_micast/dev/micast-broadcaster/spots/sch15min.mp3" start="2022-05-14T17:00:00Z" end="2022-06-01T23:59:00Z">
+                <schedules start="19:27" end="23:59" weekdays="Mon,Tue" interval="2h"/>
+            </spots>
+        </SpotsDoc>"#;
+
+    let spots: SpotIntervals = SpotIntervals::from_str(&s, Utc::now())?;
+    println!("spots to play: {:?}", spots);
+    let mut spotlist = spots.sort();
+
+    println!("spots to play: {:?}", spotlist);
+    
+    let mut broadcaster = broadcast::Builder::new()
         .set_server_ip("224.1.1.1")
         .set_clock_port(8555)
         .set_rtp_sender_port(5000)
@@ -21,10 +39,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server()?;
 
     
-    broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/abfb_44100.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
-    std::thread::sleep(std::time::Duration::from_millis(2000));
-    broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m11.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
-    broadcaster.early_crossfade();
+    //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/abfb_44100.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //std::thread::sleep(std::time::Duration::from_millis(2000));
+    //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m11.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //broadcaster.early_crossfade();
 
     
     broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
@@ -33,16 +51,51 @@ fn main() -> Result<(), Box<dyn Error>> {
     //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m13.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     //broadcaster.early_crossfade();
     
-    
+    //broadcaster.get_volume();
 
+    //std::thread::sleep(std::time::Duration::from_millis(6000));
+    //broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;
 
-    
-    //std::thread::sleep(std::time::Duration::from_millis(2000));
-    //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/abfb_44100.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
-    //broadcaster.schedule_next("file:///Users/nico/project_micast/dev/micast-dj/m13.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    /*let paths = std::fs::read_dir("/Volumes/GrafikSpeicher/micast/Radio Spots Beispiele/").unwrap();
 
-    std::thread::sleep(std::time::Duration::from_millis(2000));
-    //broadcaster.early_crossfade();
+    for path in paths {
+        let p = &path.unwrap().path().display().to_string();
+        if p.contains(".mp3") {
+            while broadcaster.spot_is_running() {
+                std::thread::sleep(std::time::Duration::from_millis(1000)); 
+            }
+            std::thread::sleep(std::time::Duration::from_millis(12000)); 
+            debug!("play_spot: {}",p);
+            let uri = format!("file://{}", p);
+            broadcaster.play_spot(&uri)?;
+        }
+    }*/
+    println!("start spot list:");
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+
+        if spotlist.len() > 0 {
+            let next_spot = &spotlist[0];
+            let now = Utc::now();
+            
+            // window of next spot - 1 minute and next_spot + 1 minute
+
+            if now > next_spot.runs_at + chrono::Duration::minutes(1) {
+                // remove it
+                spotlist.remove(0);
+                continue;
+            }
+
+            if now >= next_spot.runs_at && now < next_spot.runs_at + chrono::Duration::minutes(1) {
+                let next_spot = spotlist.remove(0);
+                if !broadcaster.spot_is_running() {
+                    broadcaster.play_spot(next_spot.uri)?;
+                }
+            }
+
+        }
+        
+    }
 
     main_loop.run();
 
