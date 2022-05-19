@@ -138,8 +138,8 @@ impl PlaybackClient {
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        //let _ = self.clock.wait_for_sync(gst::ClockTime::from_seconds(2));
-        //self.pipeline.set_start_time(gst::ClockTime::NONE);
+        let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
+        self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
 
@@ -354,7 +354,7 @@ fn create_pipeline(
         }
     });
 
-    let clock = gst_net::NetClientClock::new(Some("clock0"), clock_ip, clock_port, gst::ClockTime::ZERO);
+    let clock = gst_net::NetClientClock::new(Some("clock0"), clock_ip, clock_port, 0 * gst::ClockTime::MSECOND);
         
     let clock_bus = gst::Bus::new();
     clock.set_property("bus", &clock_bus)?;
@@ -362,7 +362,7 @@ fn create_pipeline(
     clock_bus.add_signal_watch();
 
     pipeline.use_clock(Some(&clock));
-    pipeline.set_latency(Some(gst::ClockTime::from_mseconds(latency.unwrap_or(LATENCY) as u64)));
+    pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
     Ok((pipeline, clock, convert, sink, clock_bus))
 }
