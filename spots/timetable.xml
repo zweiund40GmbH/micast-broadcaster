@@ -1,6 +1,6 @@
 <TimeTable>
     <spots 
-        uri="file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3" 
+        uri="rp1.mp3" 
         start="2022-05-14T17:00:00" 
         end="2022-06-01T23:59:00"
     >
@@ -9,7 +9,7 @@
 
     </spots>
     
-    <spots uri="file:///Users/nico/project_micast/dev/micast-broadcaster/spots/instore_1.wav" 
+    <spots uri="instore_1.wav" 
         start="2022-05-14T08:00:00" 
         end="2022-06-01T23:59:00">
        
@@ -18,7 +18,7 @@
     </spots>
     
     
-    <spots uri="file:///Users/nico/project_micast/dev/micast-broadcaster/spots/sch15min.mp3" 
+    <spots uri="sch15min.mp3" 
         start="2022-05-14T17:00:00" 
         end="2022-06-01T23:59:00">
        

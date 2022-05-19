@@ -43,7 +43,10 @@ impl PlaybackClient {
         clock_port: i32,
         latency: Option<i32>,
     ) -> Result<PlaybackClient, anyhow::Error> {
-        let _ = gst::init();
+
+        gst::init()?;
+
+        debug!("init playback client");
 
         let (pipeline, clock, convert, output) = create_pipeline(
             clock_ip,
