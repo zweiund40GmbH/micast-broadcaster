@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     // now we crate secondly the direct receiver client
     let mut player = PlaybackClient::new("224.1.1.1", "127.0.0.1", 5000,5001,5007, 8555, None).unwrap();
 
-
+    sleep!(2000);
     //player.start();
 
 

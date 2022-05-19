@@ -136,8 +136,8 @@ impl PlaybackClient {
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        let _ = self.clock.wait_for_sync(gst::ClockTime::from_seconds(2));
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //let _ = self.clock.wait_for_sync(gst::ClockTime::from_seconds(2));
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
 
@@ -265,7 +265,8 @@ fn create_pipeline(
     rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("ntp-sync", &true)?;
-    //rtpbin.set_property("autoremove", &true)?;
+    rtpbin.set_property("autoremove", &true)?;
+    rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
@@ -319,7 +320,7 @@ fn create_pipeline(
         
     let clock_bus = gst::Bus::new();
     clock.set_property("bus", &clock_bus)?;
-    clock.set_property("timeout", 1000 as u64)?;
+    clock.set_property("timeout", 5000 as u64)?;
     clock_bus.add_signal_watch();
 
     pipeline.use_clock(Some(&clock));
