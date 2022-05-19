@@ -23,6 +23,7 @@ pub struct PlaybackClient {
     output: gst::Element,
     convert: gst::Element,
     clock: gst_net::NetClientClock,
+    clock_bus: gst::Bus,
 }
 
 
@@ -48,7 +49,7 @@ impl PlaybackClient {
 
         debug!("init playback client");
 
-        let (pipeline, clock, convert, output) = create_pipeline(
+        let (pipeline, clock, convert, output, clock_bus) = create_pipeline(
             clock_ip,
             server_ip, 
             clock_port,
@@ -127,6 +128,7 @@ impl PlaybackClient {
                 clock,
                 convert,
                 output,
+                clock_bus,
             }
         )
 
@@ -224,6 +226,42 @@ impl PlaybackClient {
         Ok(())
     
     }
+
+    /*pub fn drop_elements(&mut self) -> Result<(), anyhow::Error> {
+        self.pipeline.set_state(gst::State::Paused)?;
+        self.pipeline.set_state(gst::State::Null)?;
+
+        // remove all network elements...
+        if let Some(rtp_eingang) = self.pipeline.by_name("rtp_eingang") {
+            self.pipeline.remove(&rtp_eingang)?;
+        }
+
+        if let Some(rtcp_eingang) = self.pipeline.by_name("rtcp_eingang") {
+            self.pipeline.remove(&rtcp_eingang)?;
+        }
+
+        if let Some(rtcp_senden) = self.pipeline.by_name("rtcp_senden") {
+            self.pipeline.remove(&rtcp_senden)?;
+        }
+
+        if let Some(rtpbin) = self.pipeline.by_name("rtpbin") {
+            self.pipeline.remove(&rtpbin)?;
+        }
+
+        if let Some(rtpdepayload) = self.pipeline.by_name("rtpdepayload") {
+            self.pipeline.remove(&rtpdepayload)?;
+        }
+
+        if let Some(convert) = self.pipeline.by_name("convert") {
+            self.pipeline.remove(&convert)?;
+        }
+
+        if let Some(sink) = self.pipeline.by_name("sink") {
+            self.pipeline.remove(&sink)?;
+        }
+
+        Ok(())
+    }*/
 }
 
 
@@ -236,7 +274,7 @@ fn create_pipeline(
     rtcp_recv_port: i32, 
     rtcp_send_port: i32,
     latency: Option<i32>,
-) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element), anyhow::Error> {
+) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
@@ -278,9 +316,9 @@ fn create_pipeline(
     rtcp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_0"))?;
     rtpbin.link_pads(Some("send_rtcp_src_0"), &rtcp_sink, Some("sink"))?;
 
-    let rtpdepayload = make_element("rtpL24depay", None)?;
-    let convert = make_element("audioconvert", None)?;
-    let sink = make_element("autoaudiosink", None)?;
+    let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
+    let convert = make_element("audioconvert", Some("convert"))?;
+    let sink = make_element("autoaudiosink", Some("sink"))?;
 
     pipeline.add(&rtpdepayload)?;
     pipeline.add(&convert)?;
@@ -320,11 +358,11 @@ fn create_pipeline(
         
     let clock_bus = gst::Bus::new();
     clock.set_property("bus", &clock_bus)?;
-    clock.set_property("timeout", 5000 as u64)?;
+    clock.set_property("timeout", 1000 as u64)?;
     clock_bus.add_signal_watch();
 
     pipeline.use_clock(Some(&clock));
     pipeline.set_latency(Some(gst::ClockTime::from_mseconds(latency.unwrap_or(LATENCY) as u64)));
 
-    Ok((pipeline, clock, convert, sink))
+    Ok((pipeline, clock, convert, sink, clock_bus))
 }
