@@ -74,8 +74,8 @@ pub fn create_bin(
     rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    rtpbin.set_property("use-pipeline-clock", &true)?;
-    rtpbin.set_property("rtcp-sync-send-time", &false)?;
+    //rtpbin.set_property("use-pipeline-clock", &true)?;
+    //rtpbin.set_property("rtcp-sync-send-time", &false)?;
 
     if let Some(multicast_interface) = multicast_interface {
         rtp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
