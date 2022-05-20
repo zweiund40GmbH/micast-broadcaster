@@ -43,6 +43,7 @@ impl PlaybackClient {
         rtcp_send_port: i32,
         clock_port: i32,
         latency: Option<i32>,
+        multicast_interface: Option<String>,
     ) -> Result<PlaybackClient, anyhow::Error> {
 
         gst::init()?;
@@ -57,6 +58,7 @@ impl PlaybackClient {
             rtcp_recv_port,
             rtcp_send_port,
             latency,
+            multicast_interface.clone(),
         )?;
 
         let pipeline_weak = pipeline.downgrade();
@@ -269,6 +271,7 @@ fn create_pipeline(
     rtcp_recv_port: i32, 
     rtcp_send_port: i32,
     latency: Option<i32>,
+    multicast_interface: Option<String>,
 ) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
@@ -292,6 +295,12 @@ fn create_pipeline(
     rtcp_sink.set_property("host", &server_ip)?;
     rtcp_sink.set_property("async", &false)?; 
     rtcp_sink.set_property("sync", &false)?;
+
+    if let Some(multicast_interface) = multicast_interface {
+        rtp_src.set_property("multicast-iface", &multicast_interface)?;
+        rtcp_src.set_property("multicast-iface", &multicast_interface)?;
+        rtcp_sink.set_property("multicast-iface", &multicast_interface)?;
+    }
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
     rtpbin.set_property_from_str("buffer-mode", "synced");

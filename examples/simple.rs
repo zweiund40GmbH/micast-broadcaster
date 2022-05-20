@@ -29,11 +29,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("spots timezone: {:?}",Local::now());
 
     let mut scheduler = Scheduler::new();
-    scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
+    //scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
     
     
     let mut broadcaster = broadcast::Builder::new()
         .set_server_ip("224.1.1.1")
+        //.set_server_ip("10.211.55.4")
         .set_clock_port(8555)
         .set_rtp_sender_port(5000)
         .set_rtcp_sender_port(5001)

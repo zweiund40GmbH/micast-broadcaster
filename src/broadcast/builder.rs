@@ -8,6 +8,7 @@ pub struct Builder {
     rtcp_sender_port: Option<i32>, 
     rtcp_receive_port: Option<i32>, 
     clock_port: Option<i32>, 
+    multicast_interface: Option<String>,
 }
 
 
@@ -62,6 +63,11 @@ impl Builder {
         self
     }
 
+    pub fn set_multicast_interface(mut self, interf: &str) -> Self {
+        self.multicast_interface = Some(interf.to_string());
+        self
+    }
+
     /// # build the server
     pub fn build_server(&self) -> Result<super::Broadcast, anyhow::Error> {
         let ip = self.server_ip.clone();
@@ -72,6 +78,7 @@ impl Builder {
             self.rtcp_sender_port.unwrap_or_default(),
             self.rtcp_receive_port.unwrap_or_default(),
             self.clock_port.unwrap_or_default(),
+            self.multicast_interface.clone(),
         )
     }
 }

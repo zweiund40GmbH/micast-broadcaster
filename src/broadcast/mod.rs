@@ -96,6 +96,7 @@ impl Broadcast {
         rtcp_sender_port: i32, 
         rtcp_receive_port: i32, 
         clock_port:i32, 
+        multicast_interface: Option<String>,
     ) -> Result<
         Self,
         anyhow::Error,
@@ -211,7 +212,8 @@ impl Broadcast {
             rtcp_receive_port, 
             rtcp_sender_port, 
             rtp_sender_port,
-            server_ip
+            server_ip,
+            multicast_interface,
         )?;
         // -- add senderbin to pipeline
         pipeline.add(&sender_bin)?;

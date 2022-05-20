@@ -24,7 +24,8 @@ pub fn create_bin(
     rtcp_receiver_port: i32, 
     rtcp_send_port: i32, 
     rtp_send_port: i32, 
-    server_address: &str
+    server_address: &str,
+    multicast_interface: Option<String>,
 ) -> Result<gst::Bin, anyhow::Error,> {
 
     debug!("setup gstbin for RTP Stream Networking");
@@ -42,10 +43,10 @@ pub fn create_bin(
     gst::Element::link_many(&[&capsfilter, &payloader])?;
 
     // network and transport
-    let rtpbin = make_element("rtpbin", None)?;
-    let rtp_udp_sink = make_element("udpsink",   Some("network_rtp_sink"))?;
-    let rtcp_udp_sink = make_element("udpsink",  Some("network_rtcp_sink"))?;
-    let rtcp_udp_src = make_element("udpsrc",    Some("network_rtcp_src"))?;
+    let rtpbin        = make_element("rtpbin", None)?;
+    let rtp_udp_sink  = make_element("udpsink",Some("network_rtp_sink"))?;
+    let rtcp_udp_sink = make_element("udpsink",Some("network_rtcp_sink"))?;
+    let rtcp_udp_src  = make_element("udpsrc", Some("network_rtcp_src"))?;
 
     bin.add_many(&[&rtpbin, &rtp_udp_sink, &rtcp_udp_sink, &rtcp_udp_src])?;
 
@@ -57,6 +58,7 @@ pub fn create_bin(
     // set rtp ip and port
     rtp_udp_sink.set_property("host", server_address)?;
     rtp_udp_sink.set_property("port", rtp_send_port)?;
+    
 
     // set rtcp ip and port (disable async and sync)
     rtcp_udp_sink.set_property("host", server_address)?;
@@ -64,11 +66,22 @@ pub fn create_bin(
     rtcp_udp_sink.set_property("async", &false)?; 
     rtcp_udp_sink.set_property("sync", &false)?;
 
+    
+    
+    //multicast-iface=enp5s0
+
     rtcp_udp_src.set_property("address", server_address)?;
     rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
+    rtpbin.set_property("use-pipeline-clock", &true)?;
     rtpbin.set_property("rtcp-sync-send-time", &false)?;
+
+    if let Some(multicast_interface) = multicast_interface {
+        rtp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
+        rtcp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
+        rtcp_udp_src.set_property("multicast-iface", &multicast_interface)?;
+    }
 
     let ghost_pad = gst::GhostPad::with_target(Some("sink"), &capsfilter.static_pad("sink").unwrap())?;
     bin.add_pad(&ghost_pad)?;
