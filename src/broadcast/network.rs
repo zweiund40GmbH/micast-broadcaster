@@ -68,6 +68,7 @@ pub fn create_bin(
     rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
+    rtpbin.set_property("rtcp-sync-send-time", &false)?;
 
     let ghost_pad = gst::GhostPad::with_target(Some("sink"), &capsfilter.static_pad("sink").unwrap())?;
     bin.add_pad(&ghost_pad)?;

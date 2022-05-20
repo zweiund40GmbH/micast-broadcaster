@@ -342,9 +342,17 @@ impl Broadcast {
         };
 
         self.pipeline.set_state(gst::State::Paused)?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        self.pipeline.set_state(gst::State::Null)?;
+        
+
         rtp_sink.set_property( "host", server_address)?;
         rtcp_sink.set_property("host", server_address)?;
         rtcp_src.set_property( "address", server_address)?;
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        self.pipeline.set_state(gst::State::Ready)?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
         self.pipeline.set_state(gst::State::Playing)?;
 
         Ok(())

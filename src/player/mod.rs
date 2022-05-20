@@ -147,24 +147,17 @@ impl PlaybackClient {
     pub fn stop(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Paused);
+        std::thread::sleep(std::time::Duration::from_millis(200));
         let _ = self.pipeline.set_state(gst::State::Null);
 
     }
 
-    pub fn change_clock_address(&self, address: &str) -> Result<(), anyhow::Error> {
-        self.pipeline.set_state(gst::State::Null)?;
-        self.pipeline.set_state(gst::State::Ready)?;
-        println!("address: {:?}", self.clock.address());
-        self.clock.set_address(Some(address));
-        self.pipeline.use_clock(Some(&self.clock));
-        self.start();
+    pub fn change_clock_and_server(&self, clock: &str, server: &str) -> Result<(), anyhow::Error> {
+        self.stop();
+        
 
-        Ok(())
-    }
+        self.clock.set_address(Some(clock));
 
-    pub fn change_server_address(&self, server_address: &str) -> Result<(), anyhow::Error> {
-
- 
         let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
             Some(elem) => elem,
             None => { 
@@ -186,20 +179,22 @@ impl PlaybackClient {
             }
         };
 
-        self.pipeline.set_state(gst::State::Null)?;
-        self.pipeline.set_state(gst::State::Ready)?;
-
-        rtcp_eingang.set_property( "address", server_address)?;
-        rtcp_senden.set_property("host", server_address)?;
-        rtp_eingang.set_property( "address", server_address)?;
+        rtcp_eingang.set_property( "address", server)?;
+        rtcp_senden.set_property("host", server)?;
+        rtp_eingang.set_property( "address", server)?;
         
-        self.pipeline.set_state(gst::State::Playing)?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        self.pipeline.set_state(gst::State::Ready)?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        self.start();
         
         Ok(())
     }
 
     pub fn change_output(&mut self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
         
+        self.stop();
+
         debug!("change_output, creates new element {}, with : {:?}", element, device);
         let sink = gst::ElementFactory::make(element, None)?;
 
@@ -207,15 +202,14 @@ impl PlaybackClient {
             sink.set_property("device", d)?;
         }
 
-        debug!("set pipeline to paused");
-        self.pipeline.set_state(gst::State::Paused)?;
-
-        self.pipeline.set_state(gst::State::Null)?;
+        
 
 
         debug!("unlink and remove old output");
         self.convert.unlink(&self.output);
         self.pipeline.remove(&self.output)?;
+        
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
         debug!("add and link new output");
         self.pipeline.add(&sink)?;
@@ -223,6 +217,7 @@ impl PlaybackClient {
 
         self.output = sink;
 
+        self.start();
         Ok(())
     
     }
