@@ -80,7 +80,7 @@ pub fn create_bin(
     debug!("RTCP RECEIVE PORT: {}", rtcp_receiver_port);
     rtcp_udp_src.set_property("address", server_address)?;
     rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
-    rtcp_udp_sink.set_property("async", &true)?; 
+    //rtcp_udp_sink.set_property("async", &true)?; 
     
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
