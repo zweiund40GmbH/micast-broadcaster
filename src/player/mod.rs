@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 // playback client
 
-use crate::helpers::make_element;
+use crate::helpers::{make_element, sleep_ms};
 
 
 /// Default latency for Playback
@@ -137,23 +137,32 @@ impl PlaybackClient {
         
     }
 
+    /// Start the player
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
+        //let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
         self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
 
 
+    /// Stops the player
     pub fn stop(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Paused);
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         let _ = self.pipeline.set_state(gst::State::Null);
 
     }
 
+    /// Change Clock and Server address
+    /// 
+    /// # Arguments
+    /// 
+    /// * `clock` - IP Address / Hostname of the clock provider
+    /// * `server` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
+    /// 
     pub fn change_clock_and_server(&self, clock: &str, server: &str) -> Result<(), anyhow::Error> {
         self.stop();
         
@@ -185,13 +194,48 @@ impl PlaybackClient {
         rtcp_senden.set_property("host", server)?;
         rtp_eingang.set_property( "address", server)?;
         
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         self.pipeline.set_state(gst::State::Ready)?;
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         self.start();
         
         Ok(())
     }
+
+    /// Change Clock address
+    /// 
+    /// # Arguments
+    /// 
+    /// * `clock` - IP Address / Hostname of the clock provider
+    /// 
+    pub fn change_clock(&mut self, clock: &str) -> Result<(), anyhow::Error> {
+        self.stop();
+        
+        debug!("change current clock address {} to {}", self.clock.address().unwrap_or(glib::GString::from("-unknown-")), clock);
+        
+
+        let (clock, clock_bus) = create_net_clock(&self.pipeline, clock, 8555)?;
+
+        //drop(self.clock);
+        //drop(self.clock_bus);
+
+        self.clock = clock;
+        self.clock_bus = clock_bus;
+
+        debug!("created a clock and wait 5 seconds now...");
+        sleep_ms!(5000);
+        //self.clock.set_address(Some(clock));
+
+
+        debug!("finished change clock...");
+
+        sleep_ms!(200);
+        self.start();
+        
+        Ok(())
+    }
+
+
 
     pub fn change_output(&mut self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
         
@@ -211,7 +255,7 @@ impl PlaybackClient {
         self.convert.unlink(&self.output);
         self.pipeline.remove(&self.output)?;
         
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
 
         debug!("add and link new output");
         self.pipeline.add(&sink)?;
@@ -358,15 +402,43 @@ fn create_pipeline(
         }
     });
 
-    let clock = gst_net::NetClientClock::new(Some("clock0"), clock_ip, clock_port, 0 * gst::ClockTime::MSECOND);
+    pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
+
+    let (clock, clock_bus) = create_net_clock(&pipeline, clock_ip, clock_port)?;
+
+    Ok((pipeline, clock, convert, sink, clock_bus))
+}
+
+fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<(gst_net::NetClientClock,gst::Bus), anyhow::Error> {
+    let clock = gst_net::NetClientClock::new(None, address, port, 0 * gst::ClockTime::MSECOND);
         
     let clock_bus = gst::Bus::new();
     clock.set_property("bus", &clock_bus)?;
-    clock.set_property("timeout", 1000 as u64)?;
-    clock_bus.add_signal_watch();
+    clock.set_property("timeout", 2 as u64)?;
+
+    clock_bus.add_watch(move |_, msg| {
+        //use gst::MessageView;
+
+        //debug!("msg: {:?}", msg);
+
+        match msg.view() {
+            /*MessageView::Element(src) => {
+                if let Some(net_clock_struct) = src.structure() {
+                    if net_clock_struct.synchronised == true {
+
+                    }
+                }
+            }*/
+            
+            _ => (),
+        };
+
+        // Tell the mainloop to continue executing this callback.
+        glib::Continue(true)
+    })
+    .expect("Failed to add bus watch");
 
     pipeline.use_clock(Some(&clock));
-    pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
-    Ok((pipeline, clock, convert, sink, clock_bus))
+    Ok((clock, clock_bus))
 }

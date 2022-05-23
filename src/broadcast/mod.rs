@@ -232,7 +232,7 @@ impl Broadcast {
 
         audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
 
-        pipeline.set_state(gst::State::Playing)?;
+        //pipeline.set_state(gst::State::Playing)?;
 
         // downgrade pipeline for ready_rx receiver for sendercommands
         let pipeline_weak = pipeline.downgrade();
