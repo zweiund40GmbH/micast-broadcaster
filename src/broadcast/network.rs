@@ -39,7 +39,7 @@ pub fn create_bin(
         //.field("rate", &48000i32)
         .field("rate", &44100i32)
         .build();
-    capsfilter.set_property("caps", &caps).unwrap();     
+    capsfilter.set_property("caps", &caps).unwrap();  
     gst::Element::link_many(&[&capsfilter, &payloader])?;
 
     // network and transport
@@ -50,6 +50,7 @@ pub fn create_bin(
 
     bin.add_many(&[&rtpbin, &rtp_udp_sink, &rtcp_udp_sink, &rtcp_udp_src])?;
 
+
     payloader.link_pads(Some("src"), &rtpbin, Some("send_rtp_sink_0"))?;
     rtpbin.link_pads(Some("send_rtp_src_0"), &rtp_udp_sink, Some("sink"))?; // send media stream on 5004
     rtpbin.link_pads(Some("send_rtcp_src_0"), &rtcp_udp_sink, Some("sink"))?; //send rtcp contronls on port 5005
@@ -58,6 +59,10 @@ pub fn create_bin(
     // set rtp ip and port
     rtp_udp_sink.set_property("host", server_address)?;
     rtp_udp_sink.set_property("port", rtp_send_port)?;
+
+    // required?
+    rtp_udp_sink.set_property("sync", &true)?;
+    rtp_udp_sink.set_property("async", &false)?;
     
 
     // set rtcp ip and port (disable async and sync)
@@ -65,6 +70,7 @@ pub fn create_bin(
     rtcp_udp_sink.set_property("port", rtcp_send_port)?;
     rtcp_udp_sink.set_property("async", &false)?; 
     rtcp_udp_sink.set_property("sync", &false)?;
+
 
     
     
@@ -78,6 +84,7 @@ pub fn create_bin(
     //rtpbin.set_property("rtcp-sync-send-time", &false)?;
 
     if let Some(multicast_interface) = multicast_interface {
+        debug!("set multicast interface {}", multicast_interface);
         rtp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
         rtcp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
         rtcp_udp_src.set_property("multicast-iface", &multicast_interface)?;

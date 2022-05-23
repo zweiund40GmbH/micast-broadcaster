@@ -8,6 +8,8 @@ use crate::helpers::{make_element, upgrade_weak};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::sync::mpsc::Sender;
 
+use crate::helpers::sleep_ms;
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq,Debug)]
 pub enum ItemState {
@@ -195,6 +197,7 @@ impl Item {
     /// generates a complete pipeline to ensure decodin, and converting is done
     fn decoder_pad_added(&self, pad: &gst::Pad) -> Result<(), anyhow::Error> {
         
+        debug!("decoder pad added");
         let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND; 
         if let Some(caps) = pad.current_caps() {
             if let Some(structure) = caps.structure(0) {
@@ -253,12 +256,12 @@ impl Item {
         }
   
     
+        // disable probe blocking thing
         let block_probe_type = gst::PadProbeType::BLOCK | gst::PadProbeType::BUFFER | gst::PadProbeType::BUFFER_LIST;
         
         let item_clone = self.downgrade();
         audio_pad.add_probe(block_probe_type, move |pad, probe_info| {
             let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
-
             item.pad_probe_blocked(pad, probe_info)
         });
     
@@ -283,12 +286,13 @@ impl Item {
     fn pad_probe_blocked(&self, _pad: &gst::GhostPad, info: &mut gst::PadProbeInfo) -> gst::PadProbeReturn {
         let mut values = self.values.write().unwrap();
 
+        debug!("pad probe blocked");
         if let Some(id) = info.id.take() {
             values.audio_pad_probe_block_id = Some(id);
         }
         drop(values);
     
-        return gst::PadProbeReturn::Ok
+        return gst::PadProbeReturn::Pass
     }
 
     /// ## check if item is going eos
@@ -440,6 +444,7 @@ impl Item {
 
     //audio_pad_probe_block_id
     pub fn has_block_id(&self) -> bool {
+        
         let values = self.values.read().unwrap();
         let has = values.audio_pad_probe_block_id.is_some();
         drop(values);
@@ -448,16 +453,21 @@ impl Item {
 
     pub fn remove_block(&self) -> Result<(), anyhow::Error> {
 
+        
         let mut values = self.values.write().unwrap();
 
         let audio_pad_probe_block_id = values.audio_pad_probe_block_id.take().unwrap();
         values.audio_pad_probe_block_id = None;
         let audio_pad = values.audio_pad.as_ref().unwrap();
+        debug!("remove probe...");
+        sleep_ms!(500);
         audio_pad.remove_probe(audio_pad_probe_block_id);
+        sleep_ms!(500);
         
         drop(audio_pad);
         drop(values);
 
+        
         Ok(())
     }
 

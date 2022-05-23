@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     let main_loop = glib::MainLoop::new(None, false);
 
     // now we crate secondly the direct receiver client
-    let mut player = PlaybackClient::new("224.1.1.1", "127.0.0.1", 5000,5001,5007, 8555, None, None).unwrap();
+    let mut player = PlaybackClient::new("224.1.1.1", "10.42.200.179", 5000,5001,5007, 8555, None, None).unwrap();
 
     sleep!(2000);
     //player.start();

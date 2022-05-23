@@ -187,13 +187,15 @@ impl Broadcast {
         gst::Element::link_many(&[&mainmixer, &mainmixer_converter])?;
         gst::Element::link_many(&[&mainmixer_converter, &audiomixer_queue])?;
 
-
-        
-
+        mainmixer.sync_state_with_parent()?;
+        mainmixer_converter.sync_state_with_parent()?;
+        audiomixer_queue.sync_state_with_parent()?;
 
         // setup the audio mixer as input for Pipeline
         let audiomixer = make_element("adder", Some("mixer"))?;
         let audiomixer_convert = make_element("audioconvert", Some("adder_audioconverter"))?;
+
+        
         
         // -- add mixer and converter to element
         pipeline.add(&audiomixer)?;
@@ -202,6 +204,8 @@ impl Broadcast {
         // -- linkt this elements
         gst::Element::link_many(&[&audiomixer, &audiomixer_convert])?;
 
+        audiomixer.sync_state_with_parent()?;
+        audiomixer_convert.sync_state_with_parent()?;
 
         // Volume control for spot playback
         let volumecontroller_audiomixer_stream = gst_controller::InterpolationControlSource::new();
@@ -219,9 +223,16 @@ impl Broadcast {
         pipeline.add(&sender_bin)?;
         
         // -- link the output of mainmixer to input of the sender_bin
+        
+        /*
+        let audio_output = make_element("autoaudiosink", None)?;
+        pipeline.add(&audio_output)?;
+        audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
+        */
+
         audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
 
-        //pipeline.set_state(gst::State::Playing)?;
+        pipeline.set_state(gst::State::Playing)?;
 
         // downgrade pipeline for ready_rx receiver for sendercommands
         let pipeline_weak = pipeline.downgrade();
@@ -578,15 +589,19 @@ impl Broadcast {
             let item_clone = item.downgrade();
 
             // when the mixer sink has a downstream event call pad_probe_going_eos for the item, where we check if the item has an eos
+            
+            
             sinkpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, probe_info| {
                 let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Pass);
                 item.pad_probe_eos(pad, probe_info)
             });
 
 
+            
             item.remove_block()?;
-
+            
             debug!("set state to activate");
+            
             item.set_state(item::ItemState::Activate);
             return Ok(());    
         }
