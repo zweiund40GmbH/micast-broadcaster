@@ -225,13 +225,15 @@ impl Broadcast {
         // -- link the output of mainmixer to input of the sender_bin
         
         /*
+        
         let audio_output = make_element("autoaudiosink", None)?;
         pipeline.add(&audio_output)?;
         audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
+        
         */
-
+        
         audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
-
+        
         //pipeline.set_state(gst::State::Playing)?;
 
         // downgrade pipeline for ready_rx receiver for sendercommands
@@ -569,9 +571,13 @@ impl Broadcast {
             bail!("Item has no AudioPad");
         }
 
+        // REMOVE BLOCKING
+        
+        #[cfg(all(target_os = "macos"))]
         if !item.has_block_id() {
             bail!("Item has no Blocked Pad");
         }
+        
 
         let audio_pad = item.audio_pad().unwrap();
 
@@ -597,7 +603,8 @@ impl Broadcast {
             });
 
 
-            
+            // REMOVE BLOCKING
+            #[cfg(all(target_os = "macos"))]
             item.remove_block()?;
             
             debug!("set state to activate");

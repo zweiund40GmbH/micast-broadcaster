@@ -24,14 +24,29 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     let main_loop = glib::MainLoop::new(None, false);
 
     // now we crate secondly the direct receiver client
-    let mut player = PlaybackClient::new("224.1.1.1", "10.42.200.76", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
+    //let mut player = PlaybackClient::new(
+    //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("bridge100".to_string())).unwrap();
+
+    //let mut player = PlaybackClient::new(
+    //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
+
+    let mut player = PlaybackClient::new(
+        "224.1.1.1", 
+        "10.42.200.43", 
+        5000, // rtp in
+        5001, // rtcp recv
+        5007, // rtcp send
+        8555, 
+        None, 
+        Some("eth0".to_string())).unwrap();        
+
 
     sleep_ms!(2);
-    //player.start();
+    player.start();
 
 
     
-    if let Err(e) = player.change_output("autoaudiosink", None) {
+    /*if let Err(e) = player.change_output("autoaudiosink", None) {
         warn!("failed to change output");
     }
     info!("start..");
@@ -39,9 +54,9 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     info!("next...");
 
     sleep!(10);
-    info!("change clock address target digger:");
+    info!("change clock address target digger:");*/
     
-    player.change_clock("10.42.200.76")?;
+    //player.change_clock("10.42.200.76")?;
     /*
     DOESNT WORK!!
 

@@ -31,9 +31,9 @@ impl PlaybackClient {
 
     /// Create a Playback Client
     /// 
-    /// - `server_ip` the IP Adress of the rtp server (can also be a multicast IP address)
-    /// - `clock_ip` the IP Adress of the clock provider (should be the IP of the Server)
-    /// - ...
+    /// - `server_ip` * the IP Adress of the rtp server (can also be a multicast IP address)
+    /// - `clock_ip`  * the IP Adress of the clock provider (should be the IP of the Server)
+    /// - `rtp_port`  * port where the stream gets received
     /// - latency of the playback (set higher on lower bandwith devices), if non LATENCY is used which is 700
     pub fn new(
         server_ip: &str,
@@ -141,7 +141,7 @@ impl PlaybackClient {
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        let _ = self.clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
+        //let _ = self.clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
         self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
@@ -337,8 +337,11 @@ fn create_pipeline(
     let rtcp_sink = make_element("udpsink", Some("rtcp_senden"))?;
     rtcp_sink.set_property("port", rtcp_send_port as i32)?;
     rtcp_sink.set_property("host", &server_ip)?;
+
     rtcp_sink.set_property("async", &false)?; 
     rtcp_sink.set_property("sync", &false)?;
+
+    //rtcp_sink.set_property("bind-address", &server_ip)?;
 
     if let Some(multicast_interface) = multicast_interface {
         rtp_src.set_property("multicast-iface", &multicast_interface)?;
@@ -352,7 +355,10 @@ fn create_pipeline(
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("ntp-sync", &true)?;
     rtpbin.set_property("autoremove", &true)?;
-    // rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
+    rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
+    rtpbin.set_property("rtcp-sync-interval", 100 as u32)?;
+    //rtpbin.set_property("add-reference-timestamp-meta", &true)?;
+    rtpbin.set_property("rtcp-sync-send-time", &true)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
@@ -360,9 +366,10 @@ fn create_pipeline(
     pipeline.add(&rtcp_sink)?;
     pipeline.add(&rtpbin)?;
 
-    rtp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtp_sink_0"))?;
-    rtcp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_0"))?;
-    rtpbin.link_pads(Some("send_rtcp_src_0"), &rtcp_sink, Some("sink"))?;
+    rtp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtp_sink_%u"))?;
+    rtcp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_%u"))?;
+    rtpbin.link_pads(Some("send_rtcp_src_%u"), &rtcp_sink, Some("sink"))?;
+    
 
     let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
     let convert = make_element("audioconvert", Some("convert"))?;
@@ -385,6 +392,8 @@ fn create_pipeline(
     rtpbin.connect_pad_added(move |el, pad| {
         let name = pad.name().to_string();
         let play_element = play_element_downgraded.upgrade().unwrap();
+        debug!("rtpbin pad_added: {} - {:?}", name, play_element);
+
         if name.contains("recv_rtp_src") {
             {
                 if last_pad_name.read().unwrap().is_some() {

@@ -257,13 +257,18 @@ impl Item {
   
     
         // disable probe blocking thing
-        let block_probe_type = gst::PadProbeType::BLOCK | gst::PadProbeType::BUFFER | gst::PadProbeType::BUFFER_LIST;
+        #[cfg(all(target_os = "macos"))]
+        {
+            let block_probe_type = gst::PadProbeType::BLOCK | gst::PadProbeType::BUFFER | gst::PadProbeType::BUFFER_LIST;
+            
+            let item_clone = self.downgrade();
+            audio_pad.add_probe(block_probe_type, move |pad, probe_info| {
+                let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
+                //warn!("joooooo");
+                item.pad_probe_blocked(pad, probe_info)
+            });
+        }
         
-        let item_clone = self.downgrade();
-        audio_pad.add_probe(block_probe_type, move |pad, probe_info| {
-            let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
-            item.pad_probe_blocked(pad, probe_info)
-        });
     
     
         let item_clone = self.downgrade();
@@ -292,7 +297,7 @@ impl Item {
         }
         drop(values);
     
-        return gst::PadProbeReturn::Pass
+        return gst::PadProbeReturn::Ok
     }
 
     /// ## check if item is going eos

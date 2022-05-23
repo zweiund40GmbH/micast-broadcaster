@@ -35,7 +35,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut broadcaster = broadcast::Builder::new()
         .set_server_ip("224.1.1.1")
         //.set_server_ip("10.211.55.4")
-        .set_multicast_interface("eth0")
+        //.set_multicast_interface("eth0")
+        //.set_multicast_interface("lo")
+        //.set_multicast_interface("bridge100")
         .set_clock_port(8555)
         .set_rtp_sender_port(5000)
         .set_rtcp_sender_port(5001)
@@ -43,13 +45,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server()?;
 
     broadcaster.start()?;
-
+    std::thread::sleep(std::time::Duration::from_millis(500));
     broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
 
-    std::thread::sleep(std::time::Duration::from_millis(10000));
-    broadcaster.start()?;
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    //broadcaster.start()?;
     /*
     std::thread::sleep(std::time::Duration::from_millis(10000));
     broadcaster.set_server_address("224.1.2.1")?;
@@ -69,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::thread::sleep(std::time::Duration::from_millis(1000));
         if !broadcaster.spot_is_running() {
             if let Ok(spot) = scheduler.next(Local::now()) {
-                broadcaster.play_spot(&spot.uri)?;
+                //broadcaster.play_spot(&spot.uri)?;
             }
         }
     }

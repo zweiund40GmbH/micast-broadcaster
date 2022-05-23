@@ -65,6 +65,7 @@ pub fn create_bin(
     rtp_udp_sink.set_property("async", &false)?;
     
 
+    debug!("RTCP SEND PORT: {}", rtcp_send_port);
     // set rtcp ip and port (disable async and sync)
     rtcp_udp_sink.set_property("host", server_address)?;
     rtcp_udp_sink.set_property("port", rtcp_send_port)?;
@@ -76,12 +77,16 @@ pub fn create_bin(
     
     //multicast-iface=enp5s0
 
+    debug!("RTCP RECEIVE PORT: {}", rtcp_receiver_port);
     rtcp_udp_src.set_property("address", server_address)?;
     rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
+    rtcp_udp_sink.set_property("async", &true)?; 
+    
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    rtpbin.set_property("use-pipeline-clock", &true)?;
-    //rtpbin.set_property("rtcp-sync-send-time", &true)?;
+    //rtpbin.set_property("use-pipeline-clock", &true)?;
+    rtpbin.set_property("rtcp-sync-send-time", &false)?;
+    
 
     if let Some(multicast_interface) = multicast_interface {
         debug!("set multicast interface {}", multicast_interface);
