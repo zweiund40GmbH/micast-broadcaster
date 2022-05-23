@@ -352,7 +352,7 @@ fn create_pipeline(
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("ntp-sync", &true)?;
     rtpbin.set_property("autoremove", &true)?;
-    rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
+    // rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
