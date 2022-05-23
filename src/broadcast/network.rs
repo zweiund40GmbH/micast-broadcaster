@@ -85,7 +85,7 @@ pub fn create_bin(
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     //rtpbin.set_property("use-pipeline-clock", &true)?;
-    rtpbin.set_property("rtcp-sync-send-time", &false)?;
+    rtpbin.set_property("rtcp-sync-send-time", &true)?;
     
 
     if let Some(multicast_interface) = multicast_interface {

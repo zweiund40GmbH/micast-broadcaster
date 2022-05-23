@@ -389,10 +389,13 @@ fn create_pipeline(
 
     let play_element_downgraded = rtpdepayload.downgrade();
 
+    let downgraded_pipeline = pipeline.downgrade();
     rtpbin.connect_pad_added(move |el, pad| {
         let name = pad.name().to_string();
         let play_element = play_element_downgraded.upgrade().unwrap();
         debug!("rtpbin pad_added: {} - {:?}", name, play_element);
+
+        let pipeline = downgraded_pipeline.upgrade().unwrap();
 
         if name.contains("recv_rtp_src") {
             {
@@ -403,6 +406,9 @@ fn create_pipeline(
 
             el.link_pads(Some(&name), &play_element, None).expect("link should work");
 
+            
+            pipeline.set_start_time(gst::ClockTime::NONE);
+            
             {
                 let mut w = last_pad_name.write().unwrap();
                 *w = Some(name);

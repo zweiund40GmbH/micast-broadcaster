@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
 
     let mut player = PlaybackClient::new(
         "224.1.1.1", 
-        "10.42.200.43", 
+        "10.42.200.76", 
         5000, // rtp in
         5001, // rtcp recv
         5007, // rtcp send
