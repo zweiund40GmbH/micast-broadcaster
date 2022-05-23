@@ -141,7 +141,7 @@ impl PlaybackClient {
     pub fn start(&self) {
 
         let _ = self.pipeline.set_state(gst::State::Playing);
-        //let _ = self.clock.wait_for_sync(gst::ClockTime::NONE);
+        let _ = self.clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
         self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
