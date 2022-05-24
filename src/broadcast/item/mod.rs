@@ -127,6 +127,10 @@ impl Item {
         // create element for decode the uri
         let dec = make_element("uridecodebin", None)?;
         dec.set_property("uri", &location)?;
+        if is_spot == true {
+            dec.set_property("use-buffering", &true)?;
+        }
+        
 
         // add element to bin
         bin.add(&dec)?;
