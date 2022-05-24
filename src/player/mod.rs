@@ -14,7 +14,7 @@ use crate::helpers::{make_element, sleep_ms};
 
 
 /// Default latency for Playback
-const LATENCY:i32 = 700;
+const LATENCY:i32 = 900;
 
 
 /// Simple Playback Client for Playback RTP Server Stream
@@ -355,10 +355,6 @@ fn create_pipeline(
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("ntp-sync", &true)?;
     rtpbin.set_property("autoremove", &true)?;
-    rtpbin.set_property("max-rtcp-rtp-time-diff", 100)?;
-    rtpbin.set_property("rtcp-sync-interval", 100 as u32)?;
-    //rtpbin.set_property("add-reference-timestamp-meta", &true)?;
-    rtpbin.set_property("rtcp-sync-send-time", &true)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
@@ -380,6 +376,7 @@ fn create_pipeline(
     pipeline.add(&sink)?;
 
     sink.set_property("sync", &true)?;
+    
 
     gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
 
@@ -408,7 +405,7 @@ fn create_pipeline(
 
             
             pipeline.set_start_time(gst::ClockTime::NONE);
-            
+
             {
                 let mut w = last_pad_name.write().unwrap();
                 *w = Some(name);
