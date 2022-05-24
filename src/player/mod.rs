@@ -17,6 +17,8 @@ use crate::helpers::{make_element, sleep_ms};
 const LATENCY:i32 = 900;
 
 
+
+
 /// Simple Playback Client for Playback RTP Server Stream
 pub struct PlaybackClient {
     pub pipeline: gst::Pipeline,
@@ -44,6 +46,7 @@ impl PlaybackClient {
         clock_port: i32,
         latency: Option<i32>,
         multicast_interface: Option<String>,
+        audio_device: Option<String>,
     ) -> Result<PlaybackClient, anyhow::Error> {
 
         gst::init()?;
@@ -58,7 +61,8 @@ impl PlaybackClient {
             rtcp_recv_port,
             rtcp_send_port,
             latency,
-            multicast_interface.clone(),
+            multicast_interface,
+            audio_device,
         )?;
 
         let pipeline_weak = pipeline.downgrade();
@@ -249,8 +253,6 @@ impl PlaybackClient {
         }
 
         
-
-
         debug!("unlink and remove old output");
         self.convert.unlink(&self.output);
         self.pipeline.remove(&self.output)?;
@@ -268,41 +270,6 @@ impl PlaybackClient {
     
     }
 
-    /*pub fn drop_elements(&mut self) -> Result<(), anyhow::Error> {
-        self.pipeline.set_state(gst::State::Paused)?;
-        self.pipeline.set_state(gst::State::Null)?;
-
-        // remove all network elements...
-        if let Some(rtp_eingang) = self.pipeline.by_name("rtp_eingang") {
-            self.pipeline.remove(&rtp_eingang)?;
-        }
-
-        if let Some(rtcp_eingang) = self.pipeline.by_name("rtcp_eingang") {
-            self.pipeline.remove(&rtcp_eingang)?;
-        }
-
-        if let Some(rtcp_senden) = self.pipeline.by_name("rtcp_senden") {
-            self.pipeline.remove(&rtcp_senden)?;
-        }
-
-        if let Some(rtpbin) = self.pipeline.by_name("rtpbin") {
-            self.pipeline.remove(&rtpbin)?;
-        }
-
-        if let Some(rtpdepayload) = self.pipeline.by_name("rtpdepayload") {
-            self.pipeline.remove(&rtpdepayload)?;
-        }
-
-        if let Some(convert) = self.pipeline.by_name("convert") {
-            self.pipeline.remove(&convert)?;
-        }
-
-        if let Some(sink) = self.pipeline.by_name("sink") {
-            self.pipeline.remove(&sink)?;
-        }
-
-        Ok(())
-    }*/
 }
 
 
@@ -316,6 +283,7 @@ fn create_pipeline(
     rtcp_send_port: i32,
     latency: Option<i32>,
     multicast_interface: Option<String>,
+    audio_device: Option<String>,
 ) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
@@ -369,7 +337,15 @@ fn create_pipeline(
 
     let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
     let convert = make_element("audioconvert", Some("convert"))?;
-    let sink = make_element("autoaudiosink", Some("sink"))?;
+
+
+    let sink = if let Some(device) = audio_device {
+        let sink = make_element("alsasink", Some("sink"))?;
+        sink.set_property("device", device);
+        sink
+    } else {
+        make_element("autoaudiosink", Some("sink"))?
+    };
 
     pipeline.add(&rtpdepayload)?;
     pipeline.add(&convert)?;
