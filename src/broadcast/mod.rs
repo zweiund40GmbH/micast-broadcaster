@@ -252,7 +252,7 @@ impl Broadcast {
         //let tee = make_element("tee", Some("audiotee"))?;
         //pipeline.add(&tee)?;
         //audiomixer_queue.link_pads(Some("src"), &tee, Some("sink"))?;
-        audiomixer_queue.link_pads(Some("src"), &tcp_output, Some("sink"))?;
+        audiomixer_queue.link_pads(Some("src"), &file_output, Some("sink"))?;
 
         /*let sender_queue = make_element("queue", Some("sender_queue"))?;
         let audio_queue = make_element("queue", Some("audio_queue"))?;
