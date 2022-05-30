@@ -33,15 +33,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     
     let mut broadcaster = broadcast::Builder::new()
-        .set_server_ip("224.1.1.1")
+        .set_server_ip("10.42.200.211")
         //.set_server_ip("10.211.55.4")
         //.set_multicast_interface("eth0")
         //.set_multicast_interface("lo")
         //.set_multicast_interface("bridge100")
-        .set_clock_port(8555)
-        .set_rtp_sender_port(5000)
-        .set_rtcp_sender_port(5001)
-        .set_rtcp_receive_port(5007)
+        //.set_clock_port(8555)
+        //.set_rtp_sender_port(5000)
+        //.set_rtcp_sender_port(5001)
+        //.set_rtcp_receive_port(5007)
         .build_server()?;
 
     broadcaster.start()?;

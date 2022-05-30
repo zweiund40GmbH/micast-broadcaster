@@ -4,11 +4,12 @@
 #[derive(Default)]
 pub struct Builder {
     server_ip: Option<String>, 
-    rtp_sender_port:  Option<i32>, 
+    tcp_port: Option<i32>,
+    /*rtp_sender_port:  Option<i32>, 
     rtcp_sender_port: Option<i32>, 
     rtcp_receive_port: Option<i32>, 
     clock_port: Option<i32>, 
-    multicast_interface: Option<String>,
+    multicast_interface: Option<String>,*/
 }
 
 
@@ -22,11 +23,13 @@ impl Builder {
     /// - `rtcp_receiver_port` 5007
     pub fn new() -> Builder {
         Builder {
-            clock_port: Some(8555),
+            ..Default::default()
+
+            /*clock_port: Some(8555),
             rtp_sender_port: Some(5000),
             rtcp_sender_port: Some(5001),
             rtcp_receive_port: Some(5007),
-            ..Default::default()
+            ..Default::default()*/
         }
     }
 
@@ -36,7 +39,13 @@ impl Builder {
         self
     }
 
-    /// set the rtp send port (per default 5000)
+    /// set the tcp_port where the tcpsink opens a server
+    pub fn set_tcp_port(mut self, tcp_port: i32) -> Self {
+        self.tcp_port = Some(tcp_port);
+        self
+    }
+
+    /*/// set the rtp send port (per default 5000)
     pub fn set_rtp_sender_port(mut self, port: i32) -> Self {
         self.rtp_sender_port = Some(port);
         self
@@ -66,19 +75,20 @@ impl Builder {
     pub fn set_multicast_interface(mut self, interf: &str) -> Self {
         self.multicast_interface = Some(interf.to_string());
         self
-    }
+    }*/
 
     /// # build the server
     pub fn build_server(&self) -> Result<super::Broadcast, anyhow::Error> {
         let ip = self.server_ip.clone();
 
         super::Broadcast::new(
-            &ip.unwrap_or_default(),
-            self.rtp_sender_port.unwrap_or_default(),
+            &ip.unwrap_or("localhost".to_string()),
+            self.tcp_port.unwrap_or(3333),
+            /*self.rtp_sender_port.unwrap_or_default(),
             self.rtcp_sender_port.unwrap_or_default(),
             self.rtcp_receive_port.unwrap_or_default(),
             self.clock_port.unwrap_or_default(),
-            self.multicast_interface.clone(),
+            self.multicast_interface.clone(),*/
         )
     }
 }

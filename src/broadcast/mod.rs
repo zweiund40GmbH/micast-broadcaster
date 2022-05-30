@@ -44,9 +44,11 @@ struct SenderCommand {
 pub struct BroadcastInner {
     pipeline: gst::Pipeline,
     //audio_mixer: gst::Element,
-    #[allow(unused_parens, dead_code)]
-    clock_provider: gst_net::NetTimeProvider,
+    //#[allow(unused_parens, dead_code)]
+    //clock_provider: gst_net::NetTimeProvider,
     playback_queue: Queue,
+
+    //network_bin: gst::Bin,
 
     commands_tx: glib::Sender<SenderCommand>,
     mainmixer: gst::Element,
@@ -92,11 +94,14 @@ impl Broadcast {
     ///
     pub fn new(
         server_ip: &str, 
+        tcp_port: i32,
+        /*
         rtp_sender_port: i32, 
         rtcp_sender_port: i32, 
         rtcp_receive_port: i32, 
         clock_port:i32, 
         multicast_interface: Option<String>,
+        */
     ) -> Result<
         Self,
         anyhow::Error,
@@ -172,10 +177,12 @@ impl Broadcast {
 
 
         // setup clock for synchronization
+        /*
         let clock = gst::SystemClock::obtain();
         let clock_provider = gst_net::NetTimeProvider::new(&clock, None, clock_port);
         clock.set_property("clock-type", &gst::ClockType::Realtime)?;
         pipeline.use_clock(Some(&clock));
+        */
 
         // setup audiomixer for broadcast schedule notifications or advertising
         let mainmixer = make_element("audiomixer", Some("main_mixer"))?;
@@ -212,6 +219,7 @@ impl Broadcast {
         volumecontroller_audiomixer_stream.set_mode(gst_controller::InterpolationMode::Linear);
 
         // create network things
+        /*
         let sender_bin = self::network::create_bin(
             rtcp_receive_port, 
             rtcp_sender_port, 
@@ -219,20 +227,46 @@ impl Broadcast {
             server_ip,
             multicast_interface,
         )?;
+        */
         // -- add senderbin to pipeline
-        pipeline.add(&sender_bin)?;
+        // pipeline.add(&sender_bin)?;
         
         // -- link the output of mainmixer to input of the sender_bin
         
-        /*
+        //let audio_output = make_element("autoaudiosink", None)?;
+        //pipeline.add(&audio_output)?;
         
-        let audio_output = make_element("autoaudiosink", None)?;
-        pipeline.add(&audio_output)?;
-        audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
+        /*let tcp_output = make_element("tcpserversink", Some("tcp_output"))?;
+        tcp_output.set_property("host", server_ip)?;
+        tcp_output.set_property("port", &tcp_port)?;
+        tcp_output.set_property("sync", &true)?;*/
+
+        let file_output = make_element("filesink", Some("tcp_output"))?;
+        file_output.set_property("location", "/dev/broadcast")?;
+        file_output.set_property("sync", &true)?;
+
+        pipeline.add(&file_output)?;
+        //audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
+        //audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
         
-        */
-        
-        audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
+        //let tee = make_element("tee", Some("audiotee"))?;
+        //pipeline.add(&tee)?;
+        //audiomixer_queue.link_pads(Some("src"), &tee, Some("sink"))?;
+        audiomixer_queue.link_pads(Some("src"), &tcp_output, Some("sink"))?;
+
+        /*let sender_queue = make_element("queue", Some("sender_queue"))?;
+        let audio_queue = make_element("queue", Some("audio_queue"))?;
+        pipeline.add(&sender_queue)?;
+        pipeline.add(&audio_queue)?;
+
+        sender_queue.link(&sender_bin)?;
+        audio_queue.link(&audio_output)?;
+
+        audio_output.set_property("sync", &true)?;*/
+
+
+        //tee.link_pads(Some("src_0"), &audio_queue, Some("sink"))?;
+        //tee.link_pads(Some("src_1"), &sender_queue, Some("sink"))?;
         
         //pipeline.set_state(gst::State::Playing)?;
 
@@ -241,7 +275,8 @@ impl Broadcast {
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
-            clock_provider,
+            //clock_provider,
+            //network_bin: sender_bin,
             playback_queue: Queue::new(),
             commands_tx,
             volumecontroller_audiomixer_stream: volumecontroller_audiomixer_stream.clone(),
