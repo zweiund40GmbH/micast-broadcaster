@@ -45,13 +45,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server()?;
 
     broadcaster.start()?;
-    //std::thread::sleep(std::time::Duration::from_millis(500));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
 
-    //std::thread::sleep(std::time::Duration::from_millis(500));
-    //broadcaster.start()?;
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    broadcaster.start()?;
     /*
     std::thread::sleep(std::time::Duration::from_millis(10000));
     broadcaster.set_server_address("224.1.2.1")?;

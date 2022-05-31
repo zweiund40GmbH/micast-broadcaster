@@ -211,7 +211,7 @@ impl Broadcast {
         audiomixer.sync_state_with_parent()?;
         audiomixer_convert.sync_state_with_parent()?;
 
-        // Volume control for spot playback
+        // Volume control for_ spot playback
         let volumecontroller_audiomixer_stream = gst_controller::InterpolationControlSource::new();
         volumecontroller_audiomixer_stream.set_mode(gst_controller::InterpolationMode::Linear);
 
@@ -238,35 +238,17 @@ impl Broadcast {
         tcp_output.set_property("port", &tcp_port)?;
         tcp_output.set_property("sync", &true)?;*/
 
-        let output = make_element("tcpserversink", Some("tcp_output"))?;
-        output.set_property("host", &server_ip)?;
-        output.set_property("port", &tcp_port)?;
-        output.set_property("sync", &true)?;
+        //let tcp_queue = make_element("queue", None)?;
+        //pipeline.add(&tcp_queue)?;
+        let tcp_output = make_element("tcpserversink", Some("tcp_output"))?;
+        tcp_output.set_property("host", &server_ip)?;
+        tcp_output.set_property("port", &3333)?;
+        tcp_output.set_property("sync", &true)?;
+        tcp_output.set_property("async", &false)?;
 
-        pipeline.add(&output)?;
-        //audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
-        //audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
-        
-        //let tee = make_element("tee", Some("audiotee"))?;
-        //pipeline.add(&tee)?;
-        //audiomixer_queue.link_pads(Some("src"), &tee, Some("sink"))?;
-        audiomixer_queue.link_pads(Some("src"), &output, Some("sink"))?;
+        pipeline.add(&tcp_output)?;
 
-        /*let sender_queue = make_element("queue", Some("sender_queue"))?;
-        let audio_queue = make_element("queue", Some("audio_queue"))?;
-        pipeline.add(&sender_queue)?;
-        pipeline.add(&audio_queue)?;
-
-        sender_queue.link(&sender_bin)?;
-        audio_queue.link(&audio_output)?;
-
-        audio_output.set_property("sync", &true)?;*/
-
-
-        //tee.link_pads(Some("src_0"), &audio_queue, Some("sink"))?;
-        //tee.link_pads(Some("src_1"), &sender_queue, Some("sink"))?;
-        
-        //pipeline.set_state(gst::State::Playing)?;
+        audiomixer_queue.link_pads(Some("src"), &tcp_output, Some("sink"))?;
 
         // downgrade pipeline for ready_rx receiver for sendercommands
         let pipeline_weak = pipeline.downgrade();
@@ -281,6 +263,7 @@ impl Broadcast {
             mainmixer: mainmixer.clone(),
             running_time: RwLock::new(gst::ClockTime::ZERO),
             current_spot: RwLock::new(None),
+
         }));
 
         // request pad for adding the audiomixer_convert to mainmixer
@@ -467,7 +450,7 @@ impl Broadcast {
 
 
     }
-    
+
     // play a spot
     pub fn play_spot(&self, uri: &str) -> Result<(), anyhow::Error> {
   
