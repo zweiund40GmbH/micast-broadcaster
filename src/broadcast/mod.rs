@@ -86,11 +86,8 @@ impl Broadcast {
     ///
     /// # Arguments
     ///
-    /// * `server_ip` - The Server Address where the clients connect to this Server (could be a broadcast address)
-    /// * `rtp_sender_port` - Port to send Mediadata to all connected clients
-    /// * `rtcp_sender_port` - Port for sending rtcp Informations to all connected clients
-    /// * `rtcp_receive_port` - Port for receive rtcp Informations from connected clients
-    /// * `clock_port` - Port where the clock gets streamed (should 8555)
+    /// * `server_ip` - the Address where the broadcaster ist listening for incoming clients
+    /// * `tcp_port` - Port where the tcpserversink ist put out the stream
     ///
     pub fn new(
         server_ip: &str, 
@@ -122,7 +119,7 @@ impl Broadcast {
         let (commands_tx, ready_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
 
 
-        debug!("create pipeline, add clock, add adder as mixer, and audioconverter for preconvert");
+        debug!("create pipeline, add adder as mixer, and audioconverter for preconvert");
         // create pipeline
         let pipeline = gst::Pipeline::new(None);
         
@@ -157,7 +154,7 @@ impl Broadcast {
                     warn!("got an error, quit here");
                     let _ = pipeline.set_state(gst::State::Paused);
                     let _ = pipeline.set_state(gst::State::Playing);
-                    
+      
                 }
                 MessageView::ClockLost(_) => {
                     warn!("ClockLost... get a new clock");
@@ -241,18 +238,19 @@ impl Broadcast {
         tcp_output.set_property("port", &tcp_port)?;
         tcp_output.set_property("sync", &true)?;*/
 
-        let file_output = make_element("filesink", Some("tcp_output"))?;
-        file_output.set_property("location", "/dev/broadcast")?;
-        file_output.set_property("sync", &true)?;
+        let output = make_element("tcpserversink", Some("tcp_output"))?;
+        output.set_property("host", &server_ip)?;
+        output.set_property("port", &tcp_port)?;
+        output.set_property("sync", &true)?;
 
-        pipeline.add(&file_output)?;
+        pipeline.add(&output)?;
         //audiomixer_queue.link_pads(Some("src"), &audio_output, Some("sink"))?;
         //audiomixer_queue.link_pads(Some("src"), &sender_bin, Some("sink"))?;
         
         //let tee = make_element("tee", Some("audiotee"))?;
         //pipeline.add(&tee)?;
         //audiomixer_queue.link_pads(Some("src"), &tee, Some("sink"))?;
-        audiomixer_queue.link_pads(Some("src"), &file_output, Some("sink"))?;
+        audiomixer_queue.link_pads(Some("src"), &output, Some("sink"))?;
 
         /*let sender_queue = make_element("queue", Some("sender_queue"))?;
         let audio_queue = make_element("queue", Some("audio_queue"))?;

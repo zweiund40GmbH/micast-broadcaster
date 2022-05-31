@@ -29,11 +29,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("spots timezone: {:?}",Local::now());
 
     let mut scheduler = Scheduler::new();
-    //scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
+    scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
     
     
-    let mut broadcaster = broadcast::Builder::new()
-        .set_server_ip("10.42.200.211")
+    let broadcaster = broadcast::Builder::new()
+        .set_server_ip("127.0.0.1")
         //.set_server_ip("10.211.55.4")
         //.set_multicast_interface("eth0")
         //.set_multicast_interface("lo")
@@ -45,12 +45,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_server()?;
 
     broadcaster.start()?;
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    //std::thread::sleep(std::time::Duration::from_millis(500));
     broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
 
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    //std::thread::sleep(std::time::Duration::from_millis(500));
     //broadcaster.start()?;
     /*
     std::thread::sleep(std::time::Duration::from_millis(10000));
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::thread::sleep(std::time::Duration::from_millis(1000));
         if !broadcaster.spot_is_running() {
             if let Ok(spot) = scheduler.next(Local::now()) {
-                //broadcaster.play_spot(&spot.uri)?;
+                broadcaster.play_spot(&spot.uri)?;
             }
         }
     }
