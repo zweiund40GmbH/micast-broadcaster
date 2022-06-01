@@ -2,7 +2,7 @@ use micast_broadcaster::{broadcast, scheduler::Scheduler};
 
 use chrono::prelude::*;
 
-use log::{debug};
+use log::{debug, warn};
 
 use glib;
 
@@ -52,7 +52,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::thread::sleep(std::time::Duration::from_millis(1000));
         if !broadcaster.spot_is_running() {
             if let Ok(spot) = scheduler.next(Local::now()) {
-                broadcaster.play_spot(&spot.uri)?;
+                if let Err(e) = broadcaster.play_spot(&format!("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/{}",spot.uri)) {
+                    warn!("error on play next spot... {:?}", e);
+                }
             }
         }
     }
