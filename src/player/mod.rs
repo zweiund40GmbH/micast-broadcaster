@@ -1,4 +1,5 @@
 
+pub(crate) mod local_player;
 use gstreamer as gst;
 use gst::prelude::*;
 use gstreamer_net as gst_net;

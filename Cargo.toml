@@ -12,7 +12,9 @@ memchr = "^2.5"
 gstreamer = { version = "^0.17", features = ["v1_16"] }
 gstreamer-net = { version = "^0.17", features = ["v1_16"] }
 gstreamer-controller = { version = "^0.17", features = ["v1_16"] }
+
 glib = { version = "^0.14" }
+
 anyhow = "1.0"
 log = "0.4"
 
