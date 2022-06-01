@@ -4,7 +4,7 @@ use std::sync::RwLock;
 use std::sync::Arc;
 use log::{debug};
 
-use crate::helpers::sleep_ms;
+use crate::sleep_ms;
 
 #[derive(Debug)]
 pub struct Queue {

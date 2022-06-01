@@ -9,7 +9,8 @@ use log::{debug, info, warn};
 use std::str::FromStr;
 
 use anyhow::{anyhow};
-use crate::helpers::{make_element, sleep_ms, upgrade_weak};
+use crate::helpers::{make_element, upgrade_weak};
+use crate::sleep_ms;
 
 pub struct LocalPlayer {
     pipeline: gst::Pipeline,

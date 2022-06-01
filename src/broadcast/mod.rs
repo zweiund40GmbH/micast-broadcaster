@@ -13,6 +13,7 @@ use gstreamer_net as gst_net;
 use gstreamer_controller as gst_controller;
 
 use crate::helpers::*;
+use crate::sleep_ms;
 
 use std::sync::{Arc, Weak, RwLock};
 use gst::prelude::*;
@@ -373,7 +374,7 @@ impl Broadcast {
         };
 
         self.pipeline.set_state(gst::State::Paused)?;
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         self.pipeline.set_state(gst::State::Null)?;
         
 
@@ -381,9 +382,9 @@ impl Broadcast {
         rtcp_sink.set_property("host", server_address)?;
         rtcp_src.set_property( "address", server_address)?;
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         self.pipeline.set_state(gst::State::Ready)?;
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        sleep_ms!(200);
         self.pipeline.set_state(gst::State::Playing)?;
 
         Ok(())

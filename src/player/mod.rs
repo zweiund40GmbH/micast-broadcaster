@@ -11,7 +11,8 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 // playback client
 
-use crate::helpers::{make_element, sleep_ms};
+use crate::helpers::make_element;
+use crate::sleep_ms;
 
 
 /// Default latency for Playback

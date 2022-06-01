@@ -8,7 +8,7 @@ use crate::helpers::{make_element, upgrade_weak};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::sync::mpsc::Sender;
 
-use crate::helpers::sleep_ms;
+use crate::sleep_ms;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq,Debug)]
