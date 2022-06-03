@@ -139,4 +139,12 @@ impl LocalPlayer {
         Ok(())
     }
 
+    pub fn stop(&self) -> Result<(), anyhow::Error> {
+        self.pipeline.set_state(gst::State::Paused)?;
+        sleep_ms!(200);
+        self.pipeline.set_state(gst::State::Null)?;
+
+        Ok(())
+    }
+
 }

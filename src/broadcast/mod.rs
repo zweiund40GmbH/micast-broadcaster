@@ -349,48 +349,6 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn set_server_address(&self, server_address: &str) -> Result<(), anyhow::Error> {
-
- 
-        let rtp_sink = match self.pipeline.by_name("network_rtp_sink") {
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtp_sink not found"))
-            }
-        };
-  
-        let rtcp_sink = match self.pipeline.by_name("network_rtcp_sink"){
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtcp_sink not found"))
-            }
-        };
-
-        let rtcp_src = match self.pipeline.by_name("network_rtcp_src"){
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtcp_src not found"))
-            }
-        };
-
-        self.pipeline.set_state(gst::State::Paused)?;
-        sleep_ms!(200);
-        self.pipeline.set_state(gst::State::Null)?;
-        
-
-        rtp_sink.set_property( "host", server_address)?;
-        rtcp_sink.set_property("host", server_address)?;
-        rtcp_src.set_property( "address", server_address)?;
-
-        sleep_ms!(200);
-        self.pipeline.set_state(gst::State::Ready)?;
-        sleep_ms!(200);
-        self.pipeline.set_state(gst::State::Playing)?;
-
-        Ok(())
-    }
-
-
     /// Schedule Next Item
     /// 
     /// sets a new uri element for playback
