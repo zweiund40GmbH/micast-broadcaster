@@ -19,7 +19,15 @@ pub struct LocalPlayer {
 impl LocalPlayer {
     
 
-    pub fn new(port: i32) -> Result<LocalPlayer, anyhow::Error> {
+    /// #new 
+    ///
+    /// creates a new Localplayer
+    ///
+    /// - `port` tcp port to connect to
+    /// - `audiosink` sink where device spits out its audio
+    /// - `rate` audio rate (44100)
+    ///
+    pub fn new(port: i32, audiodevice: Option<&str>, rate: i32) -> Result<LocalPlayer, anyhow::Error> {
         let _ = gst::init();
 
         debug!("init local player");
@@ -91,10 +99,7 @@ impl LocalPlayer {
                        }
                        if evt.type_() == gst::EventType::Eos {
                             debug!("received EOS on tcp src probe, restart pipeline!");
-                            sleep_ms!(300);
-                            //bus_clone.post(&gst::message::Eos::new());
-                            //let _ = pipeline.set_state(gst::State::Ready);
-                            //let _ = pipeline.set_state(gst::State::Playing);
+                            sleep_ms!(250);
                        }
                     }
                     _ => {
@@ -107,22 +112,20 @@ impl LocalPlayer {
         });
         
         let caps_element = make_element("capsfilter", Some("caps_element"))?;
-        let caps = gst::Caps::from_str(r#"
+        let caps = gst::Caps::from_str(&format!(r#"
                 audio/x-raw,
-                rate=(int)44100,
+                rate=(int){},
                 channels=(int)2,
                 format=(string)S16LE
-                "#)?;
+                "#, rate))?;
         caps_element.set_property("caps", &caps)?;
 
         pipeline.add(&caps_element)?;
         pipeline.add(&tcp_client)?;
-
-        let audiosink = make_element("autoaudiosink", Some("audiosink"))?;
-        pipeline.add(&audiosink)?;
-
         tcp_client.link(&caps_element)?;
-        caps_element.link(&audiosink)?;
+
+
+        Self::set_output(&pipeline, &caps_element, audiodevice)?;
 
         Ok(LocalPlayer {
             pipeline, 
@@ -132,7 +135,7 @@ impl LocalPlayer {
     pub fn play(&self) -> Result<(), anyhow::Error> {
         if let Err(e) = self.pipeline.set_state(gst::State::Playing) {
             debug!("could not switch to playing, cause of {:?}", e);
-            sleep_ms!(300);
+            sleep_ms!(200);
             self.pipeline.set_state(gst::State::Ready)?;
         }
 
@@ -143,6 +146,47 @@ impl LocalPlayer {
         self.pipeline.set_state(gst::State::Paused)?;
         sleep_ms!(200);
         self.pipeline.set_state(gst::State::Null)?;
+
+        Ok(())
+    }
+
+    /// change_output
+    ///
+    /// change the output device
+    ///
+    pub fn change_output(&self, device: Option<&str>) -> Result<(), anyhow::Error> {
+
+        if let Some(caps) = self.pipeline.by_name("caps_element") {
+            self.stop()?;
+
+            if let Some(audiosink) = self.pipeline.by_name("audiosink") {
+                
+                // unlink at first
+                caps.unlink(&audiosink);
+                self.pipeline.remove(&audiosink)?;
+
+                Self::set_output(&self.pipeline, &caps, device)?;
+
+                sleep_ms!(200);
+                
+                self.play()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_output(pipeline: &gst::Pipeline, caps_element: &gst::Element, audiodevice: Option<&str>) -> Result<(), anyhow::Error> {
+        let audiosink = if let Some(audiodevice) = audiodevice {
+            let a = make_element("alsasink", Some("audiosink"))?;
+            a.set_property("device", audiodevice)?;
+            a
+        } else {
+            make_element("autoaudiosink", Some("audiosink"))?
+        };
+
+        pipeline.add(&audiosink)?;
+        caps_element.link(&audiosink)?;
 
         Ok(())
     }
