@@ -105,6 +105,111 @@ impl Item {
         ItemWeak(Arc::downgrade(&self.0))
     }
 
+    pub fn new_silence(
+        broadcast: super::BroadcastWeak,
+    ) -> Result<Item, anyhow::Error> {
+        let bin = gst::Bin::new(None);
+
+        let tsrc = make_element("audiotestsrc", None)?;
+        tsrc.set_property_from_str("wave", "silence");
+        //tsrc.set_property("freq", 2000.0f64.to_value())?;
+        tsrc.set_property_from_str("freq", "2000");
+        tsrc.set_property("is-live", &false)?;
+
+        bin.add(&tsrc)?;
+
+        let item = Item(Arc::new(ItemInner {
+            bin: bin.clone(),
+            uri: "".to_string(),
+            broadcast_clone: Some(broadcast.clone()),
+            max_duration: 0,
+            is_spot: false,
+            ..Default::default()
+        }));
+
+        let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND; 
+        let queue = make_element("queue", Some("fade-queue-%u")).unwrap();
+        queue.set_property("max-size-buffers", 0 as u32)?;
+        queue.set_property("max-size-time", &(crossfade_time_as_clock.nseconds()))?;
+    
+        {
+            let mut values = item.values.write().unwrap();
+            values.fade_queue_sinkpad = Some(queue.static_pad("sink").unwrap());
+        }
+
+        if let Err(e) = bin.add(&queue) {
+            warn!("could not add queue to bin: {:?}", e);
+        }
+    
+        let audioresample = make_element("audioresample", None)?;
+        let audioconvert = make_element("audioconvert", None)?;
+        let capsfilter = make_element("capsfilter", None)?;
+
+        let caps = gst::Caps::builder("audio/x-raw")
+            .field("rate", &44100i32)
+            .field("channels", &2i32)
+            .build();
+        capsfilter.set_property("caps", &caps)?;     
+        
+        bin.add_many(&[&capsfilter])?;
+    
+        tsrc.link(&capsfilter)?;
+    
+        gst::Element::link_many(&[&capsfilter, &queue ])?;
+        
+        let srcpad = queue.static_pad("src").unwrap();
+        let audio_pad = gst::GhostPad::with_target(Some("src"), &srcpad)?;
+        audio_pad.set_active(true)?;
+
+        bin.add_pad(&audio_pad)?;
+        
+        let broadcast_clone = broadcast.clone().upgrade().unwrap();
+        broadcast_clone.pipeline.add(&bin)?;
+        bin.sync_state_with_parent()?;
+
+        {
+            let mut values = item.values.write().unwrap();
+            values.audio_pad = Some(bin.static_pad("src").unwrap());
+            values.decoder = Some(bin);
+        }
+
+        let item_clone = item.downgrade();
+        let fade_queue_sinkpad = queue.static_pad("sink").unwrap();
+        
+        let audio_pad_probe_going_eos_id = fade_queue_sinkpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, probe_info| {
+            let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Pass);
+            item.pad_probe_going_eos(pad, probe_info)
+        });
+
+        {
+            let mut values = item.values.write().unwrap();
+            values.audio_pad_probe_going_eos_id = audio_pad_probe_going_eos_id; 
+        }
+
+        #[cfg(all(target_os = "macos"))]
+        {
+            let block_probe_type = gst::PadProbeType::BLOCK | gst::PadProbeType::BUFFER | gst::PadProbeType::BUFFER_LIST;
+            
+            let item_clone = item.downgrade();
+            audio_pad.add_probe(block_probe_type, move |pad, probe_info| {
+                let item = upgrade_weak!(item_clone, gst::PadProbeReturn::Ok);
+                {
+                    let mut values = item.values.write().unwrap();
+                    values.state = ItemState::Prepared;
+                }
+                //warn!("joooooo");
+                item.pad_probe_blocked(pad, probe_info)
+            });
+        }
+
+        
+
+
+        debug!("silence is prepared");
+
+        Ok(item)
+    }
+
     /// ## Hold items for GStreamer
     /// 
     /// - `location` is an url for the specific item, can be an local file url (file://) or http 
@@ -227,11 +332,14 @@ impl Item {
     
         let audioresample = make_element("audioresample", None)?;
         let audioconvert = make_element("audioconvert", None)?;
+        //audioconvert.set_property_from_str("mix-matrix", "<<1.0, 0.0, 0.0, 0.0>, <0.0, 1.0, 0.0, 0.0>>");
         let capsfilter = make_element("capsfilter", None)?;
 
         let caps = gst::Caps::builder("audio/x-raw")
             //.field("rate", &48000i32)
             .field("rate", &44100i32)
+            .field("channels", &2i32)
+            //.field("channel-mask", "0x0000000000000001")
             .build();
         capsfilter.set_property("caps", &caps)?;     
         
@@ -240,7 +348,7 @@ impl Item {
         let sinkpad = audioresample.static_pad("sink").unwrap();
         pad.link(&sinkpad)?;
     
-        gst::Element::link_many(&[&audioresample, &capsfilter, &audioconvert, &queue ])?;
+        gst::Element::link_many(&[&audioresample, &audioconvert, &capsfilter, &queue ])?;
         
         let srcpad = queue.static_pad("src").unwrap();
     

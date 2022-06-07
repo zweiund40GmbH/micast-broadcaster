@@ -22,7 +22,7 @@ use gst_controller::prelude::*;
 
 use anyhow::{bail, anyhow};
 
-use log::{debug, warn};
+use log::{debug, warn, info};
 
 // Strong reference to our broadcast server state
 #[derive(Debug, Clone)]
@@ -93,6 +93,7 @@ impl Broadcast {
     pub fn new(
         server_ip: &str, 
         tcp_port: i32,
+        rate: i32,
         /*
         rtp_sender_port: i32, 
         rtcp_sender_port: i32, 
@@ -107,7 +108,7 @@ impl Broadcast {
 
 
         debug!("init gstreamer");
-        gst::init()?;
+        let _ = gst::init();
 
 
         // Get a main context...
@@ -134,6 +135,8 @@ impl Broadcast {
                 Some(pipeline) => pipeline,
                 None => return glib::Continue(false),
             };
+
+            info!("msg received: {:?}", msg);
 
             match msg.view() {
                 MessageView::Eos(..) => {
@@ -186,11 +189,21 @@ impl Broadcast {
         let mainmixer = make_element("audiomixer", Some("main_mixer"))?;
         let mainmixer_converter = make_element("audioconvert", Some("main_converter"))?;
         let audiomixer_queue = make_element("queue", Some("audiomixer_queue"))?;
+
+        let capsfilter = make_element("capsfilter", Some("mainmixer_capsfilter"))?;
+        let caps = gst::Caps::builder("audio/x-raw")
+            .field("rate", &rate)
+            .field("channels", &2i32)
+            //.field("rate", &44100i32)
+            .build();
+        capsfilter.set_property("caps", &caps).unwrap();  
+        pipeline.add(&capsfilter)?;
+
         pipeline.add(&mainmixer)?;
         pipeline.add(&mainmixer_converter)?;
         pipeline.add(&audiomixer_queue)?;
         gst::Element::link_many(&[&mainmixer, &mainmixer_converter])?;
-        gst::Element::link_many(&[&mainmixer_converter, &audiomixer_queue])?;
+        gst::Element::link_many(&[&mainmixer_converter, &capsfilter, &audiomixer_queue])?;
 
         mainmixer.sync_state_with_parent()?;
         mainmixer_converter.sync_state_with_parent()?;
@@ -200,14 +213,12 @@ impl Broadcast {
         let audiomixer = make_element("adder", Some("mixer"))?;
         let audiomixer_convert = make_element("audioconvert", Some("adder_audioconverter"))?;
 
-        
-        
         // -- add mixer and converter to element
         pipeline.add(&audiomixer)?;
         pipeline.add(&audiomixer_convert)?;
         
         // -- linkt this elements
-        gst::Element::link_many(&[&audiomixer, &audiomixer_convert])?;
+        gst::Element::link_many(&[&audiomixer,&audiomixer_convert])?;
 
         audiomixer.sync_state_with_parent()?;
         audiomixer_convert.sync_state_with_parent()?;
@@ -226,18 +237,7 @@ impl Broadcast {
             multicast_interface,
         )?;
         */
-        // -- add senderbin to pipeline
-        // pipeline.add(&sender_bin)?;
-        
-        // -- link the output of mainmixer to input of the sender_bin
-        
-        //let audio_output = make_element("autoaudiosink", None)?;
-        //pipeline.add(&audio_output)?;
-        
-        /*let tcp_output = make_element("tcpserversink", Some("tcp_output"))?;
-        tcp_output.set_property("host", server_ip)?;
-        tcp_output.set_property("port", &tcp_port)?;
-        tcp_output.set_property("sync", &true)?;*/
+
 
         //let tcp_queue = make_element("queue", None)?;
         //pipeline.add(&tcp_queue)?;
@@ -248,6 +248,8 @@ impl Broadcast {
         tcp_output.set_property("async", &false)?;
 
         pipeline.add(&tcp_output)?;
+
+        
 
         audiomixer_queue.link_pads(Some("src"), &tcp_output, Some("sink"))?;
 
@@ -381,6 +383,15 @@ impl Broadcast {
 
         Ok(())
         
+    }
+
+    pub fn push_silence(&self) -> Result<(), anyhow::Error> {
+        let broadcast_clone = self.downgrade();
+        let silence = item::Item::new_silence(broadcast_clone)?;
+
+        self.activate_item(&silence, &self.pipeline.by_name("mixer").unwrap())?;
+        self.playback_queue.push(silence);
+        Ok(())
     }
 
     pub fn spot_is_running(&self) -> bool {
@@ -546,12 +557,6 @@ impl Broadcast {
             bail!("Item has no AudioPad");
         }
 
-        // REMOVE BLOCKING
-        
-        #[cfg(all(target_os = "macos"))]
-        if !item.has_block_id() {
-            bail!("Item has no Blocked Pad");
-        }
         
 
         let audio_pad = item.audio_pad().unwrap();
@@ -580,7 +585,14 @@ impl Broadcast {
 
             // REMOVE BLOCKING
             #[cfg(all(target_os = "macos"))]
-            item.remove_block()?;
+            if !item.has_block_id() {
+                warn!("Item has no Blocked Pad");
+                
+            } else {
+                item.remove_block()?;
+            }
+
+            
             
             debug!("set state to activate");
             

@@ -38,10 +38,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     broadcaster.start()?;
     std::thread::sleep(std::time::Duration::from_millis(500));
-    broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    
+    
+    broadcaster.push_silence()?;
     //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
-    //std::thread::sleep(std::time::Duration::from_millis(5000));
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+    broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    broadcaster.early_crossfade();
     //broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;
     //std::thread::sleep(std::time::Duration::from_millis(5000));
 

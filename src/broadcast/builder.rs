@@ -5,6 +5,7 @@
 pub struct Builder {
     server_ip: Option<String>, 
     tcp_port: Option<i32>,
+    rate: Option<i32>,
     /*rtp_sender_port:  Option<i32>, 
     rtcp_sender_port: Option<i32>, 
     rtcp_receive_port: Option<i32>, 
@@ -45,6 +46,11 @@ impl Builder {
         self
     }
 
+    pub fn set_audiorate(mut self, rate: i32) -> Self {
+        self.rate = Some(rate);
+        self
+    }
+
     /*/// set the rtp send port (per default 5000)
     pub fn set_rtp_sender_port(mut self, port: i32) -> Self {
         self.rtp_sender_port = Some(port);
@@ -82,8 +88,9 @@ impl Builder {
         let ip = self.server_ip.clone();
 
         super::Broadcast::new(
-            &ip.unwrap_or("localhost".to_string()),
+            &ip.unwrap_or("127.0.0.1".to_string()),
             self.tcp_port.unwrap_or(3333),
+            self.rate.unwrap_or(44100),
             /*self.rtp_sender_port.unwrap_or_default(),
             self.rtcp_sender_port.unwrap_or_default(),
             self.rtcp_receive_port.unwrap_or_default(),

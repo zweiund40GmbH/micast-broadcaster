@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     debug!("Start local Player");
     let main_loop = glib::MainLoop::new(None, false);
 
-    let player =  LocalPlayer::new(3333)?;
+    let player =  LocalPlayer::new(3333, None, 44100)?;
 
     //std::thread::sleep(std::time::Duration::from_millis(10000));
     debug!("start playback localplayer");
