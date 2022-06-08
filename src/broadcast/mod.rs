@@ -125,55 +125,7 @@ impl Broadcast {
         // create pipeline
         let pipeline = gst::Pipeline::new(None);
         
-        let pipeline_weak = pipeline.downgrade();
-        let bus = pipeline.bus().expect("Pipeline without bus should never happen");
         
-        bus.add_watch(move |_, msg| {
-            use gst::MessageView;
-            
-            let pipeline = match pipeline_weak.upgrade() {
-                Some(pipeline) => pipeline,
-                None => return glib::Continue(false),
-            };
-
-            info!("msg received: {:?}", msg);
-
-            match msg.view() {
-                MessageView::Eos(..) => {
-                    warn!("received eos");
-                    // An EndOfStream event was sent to the pipeline, so we tell our main loop
-                    // to stop execution here.
-                }
-                MessageView::Error(err) => {
-                    warn!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
-
-                    // currently we need to panic here.
-                    // the program who use this lib, would then automatically restart.
-                    // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
-                    warn!("got an error, quit here");
-                    let _ = pipeline.set_state(gst::State::Paused);
-                    let _ = pipeline.set_state(gst::State::Playing);
-      
-                }
-                MessageView::ClockLost(_) => {
-                    warn!("ClockLost... get a new clock");
-                    // Get a new clock.
-                    let _ = pipeline.set_state(gst::State::Paused);
-                    let _ = pipeline.set_state(gst::State::Playing);
-                }
-    
-                _ => (),
-            };
-    
-            // Tell the mainloop to continue executing this callback.
-            glib::Continue(true)
-        })
-        .expect("Failed to add bus watch");
     
 
 
@@ -256,6 +208,8 @@ impl Broadcast {
         // downgrade pipeline for ready_rx receiver for sendercommands
         let pipeline_weak = pipeline.downgrade();
 
+        let bus = pipeline.bus().expect("Pipeline without bus should never happen");
+
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             //clock_provider,
@@ -268,6 +222,59 @@ impl Broadcast {
             current_spot: RwLock::new(None),
 
         }));
+
+        
+        let broadcast_weak = broadcast.downgrade();
+        //bus.add_signal_watch();
+        bus.set_sync_handler(move |_, msg| {
+            use gst::MessageView;
+            
+            let broadcast = match broadcast_weak.upgrade() {
+                Some(broadcast) => broadcast,
+                None => return gst::BusSyncReply::Pass,
+            };
+
+            //info!("msg received: {:?}", msg);
+
+            match msg.view() {
+                MessageView::Eos(..) => {
+                    warn!("received eos");
+                    // An EndOfStream event was sent to the pipeline, so we tell our main loop
+                    // to stop execution here.
+                }
+                MessageView::Error(err) => {
+                    warn!(
+                        "Error from {:?}: {} ({:?})",
+                        err.src().map(|s| s.path_string()),
+                        err.error(),
+                        err.debug()
+                    );
+
+                    warn!("error throwing object is: {:?}", err.src());
+                    if let Some(obj) = err.src() {
+                        // try to convert object to element
+                       
+                        warn!("convert obj to element: {:?}", obj);
+
+                        broadcast.playback_queue.search_for_element(&obj);
+                        
+                    }
+
+                    // currently we need to panic here.
+                    // the program who use this lib, would then automatically restart.
+                    // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
+                    warn!("got an error, quit here");
+                    //let _ = broadcast.pipeline.set_state(gst::State::Paused);
+                    //let _ = broadcast.pipeline.set_state(gst::State::Playing);
+                }
+                _ => (),
+            };
+    
+            // Tell the mainloop to continue executing this callback.
+            // glib::Continue(true)
+            gst::BusSyncReply::Pass
+        });
+        //.expect("Failed to add bus watch");
 
         // request pad for adding the audiomixer_convert to mainmixer
         if let Some(sinkpad) = mainmixer.request_pad_simple("sink_%u") { 

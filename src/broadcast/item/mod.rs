@@ -61,7 +61,7 @@ impl Default for ShareableValues {
 
 #[derive(Debug)]
 pub struct ItemInner {
-    bin: gst::Bin,
+    pub(crate) bin: gst::Bin,
     pub(crate) uri: String,
     broadcast_clone: Option<super::BroadcastWeak>,
     values: RwLock<ShareableValues>,
@@ -229,6 +229,7 @@ impl Item {
         // create a bin that hold the decoder
         let bin = gst::Bin::new(None);
 
+
         // create element for decode the uri
         let dec = make_element("uridecodebin", None)?;
         dec.set_property("uri", &location)?;
@@ -266,6 +267,7 @@ impl Item {
             values.state = ItemState::Prepared;
             debug!("item {} is prepared", item.uri);
         });
+
 
         let broadcast_clone = broadcast.clone().upgrade().unwrap();
         broadcast_clone.pipeline.add(&bin)?;
@@ -308,11 +310,15 @@ impl Item {
         
         debug!("decoder pad added");
         let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND; 
-        if let Some(caps) = pad.current_caps() {
+        
+        
+        /*if let Some(caps) = pad.current_caps() {
             if let Some(structure) = caps.structure(0) {
                 debug!("new pad: {:?}, caps: {:?}", pad, structure);
             }
-        }
+        }*/
+
+        
     
         let queue = make_element("queue", Some("fade-queue-%u")).unwrap();
         queue.set_property("max-size-buffers", 0 as u32)?;
@@ -360,6 +366,34 @@ impl Item {
         let audio_pad = gst::GhostPad::with_target(Some("src"), &srcpad)?;
     
         audio_pad.set_active(true)?;
+
+        /*audio_pad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
+            debug!("============= pad: {:#?}  \n received event upstream: {:#?}", pad, info);
+
+            if let Some(data) = &info.data {
+                match data {
+                    gst::PadProbeData::Buffer(..) => {
+                        
+                    }
+                    gst::PadProbeData::Event(evt) => {
+                        debug!("evt: {:#?}  \n received event upstream: {:#?}", evt, info);
+                        /*if evt.type_() != gst::EventType::Latency {
+                            //debug!("received event upstream: {:#?}", info);
+                        }
+                        if evt.type_() == gst::EventType::Eos {
+                            debug!("received EOS on tcp src probe, restart pipeline!");
+                            sleep_ms!(250);
+                        }*/
+                    }
+                    _ => {
+                    
+                    }
+                }
+            }
+
+            gst::PadProbeReturn::Ok
+        });*/
+
         self.bin.add_pad(&audio_pad)?;
         
         {
@@ -633,7 +667,6 @@ impl Item {
             warn!("Error: {}", e);
         }
 
-    
         let audio_pad = self.audio_pad().unwrap();
         let sinkpad = audio_pad.peer().unwrap();
 
@@ -644,10 +677,7 @@ impl Item {
             item.pad_probe_when_eos(pad, probe_info)
         });
 
-
-        if self.is_spot {
-
-        } else {
+        if !self.is_spot {
             let broadcast_clone = self.broadcast_clone.as_ref().unwrap();
             let broadcast = upgrade_weak!(broadcast_clone);
             broadcast.schedule_crossfade(&self, 0);

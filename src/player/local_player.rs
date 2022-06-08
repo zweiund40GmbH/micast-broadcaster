@@ -85,7 +85,6 @@ impl LocalPlayer {
         tcp_client.set_property("host", "127.0.0.1")?;
 
         let srcpad = tcp_client.static_pad("src").unwrap();
-        let bus_clone = bus.clone();
 
         srcpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
 

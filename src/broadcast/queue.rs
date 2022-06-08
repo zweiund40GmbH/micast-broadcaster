@@ -1,5 +1,8 @@
 
 
+use gstreamer as gst;
+use gst::prelude::*;
+
 use std::sync::RwLock;
 use std::sync::Arc;
 use log::{debug};
@@ -58,10 +61,10 @@ impl Queue {
 
         if found == false {
             if has_unknown == true  {
-                debug!("no prepared items found, put we have some unknowns... we wait 500millis");
+                debug!("no prepared items found, put we have some unknowns... we wait 200millis");
                 if retry_count.unwrap() > 0 {
                     let r = retry_count.unwrap();
-                    sleep_ms!(500);
+                    sleep_ms!(200);
                     return self.next_check(Some(r - 1))
                 }
             }
@@ -72,6 +75,15 @@ impl Queue {
         
     }
 
+    pub(crate) fn search_for_element(&self, element: &gst::Object) {
+
+        let items = self.inner.read().unwrap();
+        if let Some(item) = items.iter().find(|&i| element.has_as_ancestor(&i.bin) ) {
+            debug!("this item has element: {:?} and gets removed cause of error", item);
+            item.set_state(super::item::ItemState::Removed)
+        }
+        drop(items);
+    }
 
 
     /// return the next item in queue
@@ -84,7 +96,8 @@ impl Queue {
     /// this is the first item in list where state is __Activate__
     /// returns None if no current item is found (mean no item with state __Activate__)
     pub(crate) fn current(&self) -> Option<Arc<super::Item>> {
-        let inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write().unwrap();
+        inner.retain(|item| item.state() != super::ItemState::Removed );
         for item in inner.iter() {
             debug!("item in list: {} - {:?}", item.uri, item.state());
         }

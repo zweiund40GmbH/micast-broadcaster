@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("spots timezone: {:?}",Local::now());
 
     let mut scheduler = Scheduler::new();
-    scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
+    //scheduler.from_file("/Users/nico/project_micast/dev/micast-broadcaster/spots/timetable.xml")?;
     
     
     let broadcaster = broadcast::Builder::new()
@@ -41,12 +41,35 @@ fn main() -> Result<(), Box<dyn Error>> {
     //broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
     
-    broadcaster.push_silence()?;
+    //broadcaster.push_silence()?;
+    //warn!("Test 1)");
+    //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //std::thread::sleep(std::time::Duration::from_millis(2000));
+
+    warn!("Test 2)");
+    let _ = broadcaster.schedule_next("http://rb-bremennext-live.cast.addradio.de/rb/bremennext/live/mp3/64/stream.mp3", broadcast::ScheduleState::AfterCurrent, None);
+    broadcaster.early_crossfade();
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+
+    warn!("Test 3)");
+    let _ = broadcaster.schedule_next("http://rb-bremennext-live.cast.addradio.de/rb/bremennext/live/mp3/64/stream.mp3", broadcast::ScheduleState::AfterCurrent, None);
+    broadcaster.early_crossfade();
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+
+    warn!("Test 4)");
+    let _ = broadcaster.schedule_next("http://rb-bremennext-live.cast.addradio.de/rb/bremennext/live/mp3/64/stream.mp3", broadcast::ScheduleState::AfterCurrent, None);
+    broadcaster.early_crossfade();
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+
+    warn!("Test 1)");
+    broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    broadcaster.early_crossfade();
+    std::thread::sleep(std::time::Duration::from_millis(2000));
     //broadcaster.schedule_next("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
     
-    std::thread::sleep(std::time::Duration::from_millis(5000));
-    broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
-    broadcaster.early_crossfade();
+    
+    //broadcaster.schedule_next("https://server35757.streamplus.de/stream.mp3", broadcast::ScheduleState::AfterCurrent, None)?;
+    //broadcaster.early_crossfade();
     //broadcaster.play_spot("file:///Users/nico/project_micast/dev/micast-broadcaster/spots/rp1.mp3")?;
     //std::thread::sleep(std::time::Duration::from_millis(5000));
 
