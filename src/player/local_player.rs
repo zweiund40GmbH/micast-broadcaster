@@ -37,12 +37,11 @@ impl LocalPlayer {
         let bus = pipeline.bus().unwrap();
 
         let pipeline_weak = pipeline.downgrade();
-        bus.set_sync_handler(move |_, msg| {
+        bus.add_watch(move |_, msg| {
             let pipeline = {
                 let w = pipeline_weak.upgrade();
                 if w.is_none() {
-                    //return glib::Continue(true);
-                    return gst::BusSyncReply::Pass
+                    return glib::Continue(true);
                 }
                 w.unwrap()
             };
@@ -78,9 +77,8 @@ impl LocalPlayer {
                 }
             }
 
-            //glib::Continue(true)
-            gst::BusSyncReply::Pass
-        });
+            glib::Continue(true)
+        })?;
        
         let tcp_client = make_element("tcpclientsrc", Some("local_tcpclient"))?;
         tcp_client.set_property("port", &port)?;
