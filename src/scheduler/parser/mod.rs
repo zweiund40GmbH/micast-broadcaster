@@ -9,12 +9,14 @@ use chrono::Duration;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct TimeTable {
+    pub(crate) files: Vec<File>,
     pub(crate) spots: Vec<Spot>,
+    
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Spot {
-    pub uri: String,
+    pub file: u32,
     pub start: NaiveDateTime,
     pub end: NaiveDateTime,
     pub schedules: Vec<Schedule>,
@@ -143,6 +145,13 @@ impl Schedule {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct File {
+    pub uri: String,
+    pub id: u32,
+    pub local: Option<String>,
+}
+
 
 //load_spots loading a xml file with spots and the scheduling
 pub fn from_file(path: &str) -> Result<TimeTable,anyhow::Error> {
@@ -243,9 +252,16 @@ mod tests {
     #[test]
     fn scheduler_xml_to_string() {
         let s = TimeTable {
+            files: vec![
+                File { 
+                    id: 123709,
+                    uri: "janshand709.mp3".to_string(),
+                    local: None,
+                }
+            ],
             spots: vec![
                 Spot { 
-                    uri: "file:///test.mp3".to_string(),
+                    file: 123709,
                     start: NaiveDate::from_ymd(2022, 4, 1).and_hms(17, 00, 00),
                     end: NaiveDate::from_ymd(2022, 6, 1).and_hms(23, 59, 00),
                     schedules: vec![
@@ -274,13 +290,16 @@ mod tests {
 
         let out = quick_xml::se::to_string(&s).unwrap();
 
-        assert_eq!(out, r#"<TimeTable><spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></TimeTable>"#);
+        assert_eq!(out, r#"<TimeTable><spots file="123709" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00"><schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/><schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/></spots></TimeTable>"#);
     }
 
     #[test]
     fn scheduler_string_to_xml() {
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+            <files>
+                <file id="347" uri="bla.mp3"/>
+            </files>
+            <spots file="347" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:33" end="22:15" weekdays="Mon-Tue,Fri" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun" interval="2h"/>
                 <schedules start="10:00" end="22:00" weekdays="Sun-Mon,Fri" interval="2h"/>
@@ -290,9 +309,16 @@ mod tests {
         let out: TimeTable = from_str(&s).unwrap();
 
         assert_eq!(out, TimeTable {
+            files: vec![
+                File { 
+                    id: 347,
+                    uri: "bla.mp3".to_string(),
+                    local: None,
+                }
+            ],
             spots: vec![
                 Spot { 
-                    uri: "file:///test.mp3".to_string(),
+                    file: 347,
                     start: NaiveDate::from_ymd(2022, 4, 1).and_hms(17, 00, 00),
                     end: NaiveDate::from_ymd(2022, 6, 1).and_hms(23, 59, 00),
                     schedules: vec![

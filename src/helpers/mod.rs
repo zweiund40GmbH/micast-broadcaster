@@ -32,7 +32,7 @@ pub fn make_element(
 ) -> Result<gst::Element, anyhow::Error> {
     match gst::ElementFactory::make(factory_name, element_name) {
         Ok(elem) => Ok(elem),
-        Err(e) => { 
+        Err(_) => { 
             Err(anyhow!("Missing element: {}", factory_name))
         }
     }

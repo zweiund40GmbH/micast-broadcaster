@@ -1,14 +1,21 @@
 mod parser;
+mod fetchfiles;
 
 use anyhow::bail;
 use chrono::prelude::*;
+use log::{info, warn};
 
-#[derive(Debug, Default)]
+use std::sync::mpsc;
+
+#[derive(Debug)]
 pub struct Scheduler {
     spots: Vec<Spot>,
+    files: Vec<parser::File>,
+    load_files: bool,
     last_spot: Option<ScheduledSpot>,
     parsed_timetable: Option<parser::TimeTable>,
-
+    recv: mpsc::Receiver<Vec<parser::File>>,
+    sender: mpsc::Sender<Vec<parser::File>>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,8 +33,15 @@ pub struct ScheduledSpot {
 impl Scheduler {
 
     pub fn new() -> Scheduler {
+        let (sender, recv) = mpsc::channel();
         Scheduler {
-            ..Default::default()
+            spots: Vec::new(),
+            files: Vec::new(),
+            load_files: false,
+            last_spot: None,
+            parsed_timetable: None,
+            recv,
+            sender,
         }
     }
 
@@ -40,7 +54,6 @@ impl Scheduler {
     /// should return a Result with all Spots for this given daten and all intervals
     pub fn from_file(&mut self, path: &str) -> Result<(), anyhow::Error> {
         let parsed_timetable = parser::from_file(path)?;
-
         self.parsed_timetable = Some(parsed_timetable);
 
         Ok(())
@@ -51,8 +64,17 @@ impl Scheduler {
     /// should return a Result with all Spots for this given daten and all intervals
     pub fn from_str(&mut self, data: &str) -> Result<(), anyhow::Error> {
         let parsed_timetable = parser::from_str(data)?;
-
         self.parsed_timetable = Some(parsed_timetable);
+
+        Ok(())
+    }
+
+    pub fn load_files(&mut self) -> Result<(), anyhow::Error> {
+
+        // load the files from remote to local... then replace filenames and so on
+        self.load_files = true;
+        let timetable = self.parsed_timetable.as_ref().unwrap();
+        fetchfiles::download_files(timetable.files.clone(), self.sender.clone());
 
         Ok(())
     }
@@ -79,6 +101,7 @@ impl Scheduler {
 
             if for_date >= spot.runs_at && for_date < spot.runs_at + chrono::Duration::minutes(1) {
                 
+                info!("found spot for playback (current date: {:?}) spot: {}, runs at {}", for_date, spot.uri, spot.runs_at);
                 self.last_spot = Some(spot.clone());
                 return Ok(spot);
                 
@@ -94,6 +117,27 @@ impl Scheduler {
     /// - filter out all spots outside of given for_date date
     /// - generate all intervals
     fn process(&mut self, for_date: DateTime<Local>) -> Result<(), anyhow::Error> {
+
+        if self.load_files == true {
+            if let Ok(files) = self.recv.try_recv() {
+                info!("received some downloaded files, set files from downloaded paths");
+                self.files = files;
+            }
+        } else {
+
+            if self.files.len() == 0 {
+                info!("no remote downloading enabled, use files without download");
+                let timetable = self.parsed_timetable.as_ref().unwrap();
+                self.files = timetable.files.clone();
+            }
+        }
+
+
+        if self.files.len() == 0 {
+            warn!("no files downloaded / found, skip proccessing scheduler");
+            return Ok(())
+        }
+
         // get all valid spots (valid means they should allowed and activated for this day)
         // look at 'is_valid' in parser::Spot struct
         //let for_date = for_date + chrono::Duration::hours(2);
@@ -115,10 +159,15 @@ impl Scheduler {
                     schedule.generate_intervals(for_date).unwrap_or(Vec::new()).into_iter()
                 }).flatten().collect::<Vec<DateTime<Local>>>();
             if schedules.len() > 0 {
-                self.spots.push(Spot {
-                    uri: spot.uri,
-                    runs_at: schedules,
-                });
+                if let Some(local_uri) = self.files.iter().find(|file| file.id == spot.file).map(|file| format!("file://{}",file.local.as_ref().unwrap_or(&file.uri))) {
+                    self.spots.push(Spot {
+                        uri: local_uri,
+                        runs_at: schedules,
+                    });
+                } else {
+                    bail!("no local uri found");
+                }
+                
             }
         }
 

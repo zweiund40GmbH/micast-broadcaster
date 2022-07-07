@@ -1,15 +1,11 @@
 use gstreamer as gst;
 use gst::prelude::*;
 
-use glib;
-use glib::prelude::*;
-
-
-use log::{debug, info, warn};
+use log::{debug, warn};
 use std::str::FromStr;
 
-use anyhow::{anyhow};
-use crate::helpers::{make_element, upgrade_weak};
+use anyhow;
+use crate::helpers::{make_element};
 use crate::sleep_ms;
 
 pub struct LocalPlayer {
@@ -53,6 +49,7 @@ impl LocalPlayer {
                     debug!("received eos");
                     let _ = pipeline.set_state(gst::State::Ready);
                     let _ = pipeline.set_state(gst::State::Playing);
+                    sleep_ms!(100);
                 }
                 MessageView::Error(err) => {
                     if let Some(element) = err.src() {
@@ -63,10 +60,16 @@ impl LocalPlayer {
                             };
                             if error_code == 5 {
                                 warn!("connection could not get working... retry");
-                                sleep_ms!(2300);
+                                sleep_ms!(2400);
                                 let _ = pipeline.set_state(gst::State::Ready);
                                 let _ = pipeline.set_state(gst::State::Playing);
                             }
+                        } else {
+                            warn!("received error {:#?}", err);
+                            sleep_ms!(4600);
+                            let _ = pipeline.set_state(gst::State::Ready);
+                            let _ = pipeline.set_state(gst::State::Playing);
+
                         }
                     } else {
                         warn!("received an error {:#?}", err);
@@ -81,44 +84,45 @@ impl LocalPlayer {
         })?;
        
         let tcp_client = make_element("tcpclientsrc", Some("local_tcpclient"))?;
-        tcp_client.set_property("port", &port)?;
-        tcp_client.set_property("host", "127.0.0.1")?;
+        tcp_client.try_set_property("port", &port)?;
+        tcp_client.try_set_property("host", "127.0.0.1")?;
 
         let srcpad = tcp_client.static_pad("src").unwrap();
 
-        srcpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
 
-            if let Some(data) = &info.data {
-                match data {
-                    gst::PadProbeData::Buffer(..) => {
-                        
-                    }
-                    gst::PadProbeData::Event(evt) => {
-                       if evt.type_() != gst::EventType::Latency {
-                            //debug!("received event upstream: {:#?}", info);
-                       }
-                       if evt.type_() == gst::EventType::Eos {
-                            debug!("received EOS on tcp src probe, restart pipeline!");
-                            sleep_ms!(250);
-                       }
-                    }
-                    _ => {
-                    
-                    }
-                }
-            }
-
-            gst::PadProbeReturn::Ok
-        });
+        //srcpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
+        //    if let Some(data) = &info.data {
+        //        match data {
+        //            gst::PadProbeData::Buffer(..) => {
+        //                
+        //            }
+        //            gst::PadProbeData::Event(evt) => {
+        //               if evt.type_() != gst::EventType::Latency {
+        //                    //debug!("received event upstream: {:#?}", info);
+        //               }
+        //               if evt.type_() == gst::EventType::Eos {
+        //                    debug!("received EOS on tcp src probe, restart pipeline!");
+        //                    //sleep_ms!(700);
+        //                    return gst::PadProbeReturn::Remove;
+        //               }
+        //            }
+        //            _ => {
+        //            
+        //            }
+        //        }
+        //    }
+        //    gst::PadProbeReturn::Ok
+        //});
         
         let caps_element = make_element("capsfilter", Some("caps_element"))?;
         let caps = gst::Caps::from_str(&format!(r#"
                 audio/x-raw,
                 rate=(int){},
                 channels=(int)2,
-                format=(string)S16LE
+                format=(string)S16LE,
+                layout=(str)interleaved
                 "#, rate))?;
-        caps_element.set_property("caps", &caps)?;
+        caps_element.try_set_property("caps", &caps)?;
 
         pipeline.add(&caps_element)?;
         pipeline.add(&tcp_client)?;
@@ -135,7 +139,6 @@ impl LocalPlayer {
     pub fn play(&self) -> Result<(), anyhow::Error> {
         if let Err(e) = self.pipeline.set_state(gst::State::Playing) {
             debug!("could not switch to playing, cause of {:?}", e);
-            sleep_ms!(200);
             self.pipeline.set_state(gst::State::Ready)?;
         }
 
@@ -179,7 +182,7 @@ impl LocalPlayer {
     fn set_output(pipeline: &gst::Pipeline, caps_element: &gst::Element, audiodevice: Option<&str>) -> Result<(), anyhow::Error> {
         let audiosink = if let Some(audiodevice) = audiodevice {
             let a = make_element("alsasink", Some("audiosink"))?;
-            a.set_property("device", audiodevice)?;
+            a.try_set_property("device", audiodevice)?;
             a
         } else {
             make_element("autoaudiosink", Some("audiosink"))?

@@ -5,6 +5,7 @@ pub(crate) const MIN_VOLUME_BROADCAST: f64 = 0.02;
 
 mod helpers;
 mod player;
+mod gst_plugins;
 
 pub mod scheduler;
 pub mod broadcast;

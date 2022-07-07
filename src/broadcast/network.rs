@@ -20,6 +20,7 @@ use log::{debug};
 /// // You can have rust code between fences inside the comments
 /// // If you pass --test to `rustdoc`, it will even test it for you!
 /// ```
+#[allow(dead_code)]
 pub fn create_bin( 
     rtcp_receiver_port: i32, 
     rtcp_send_port: i32, 
@@ -39,7 +40,7 @@ pub fn create_bin(
         //.field("rate", &48000i32)
         .field("rate", &44100i32)
         .build();
-    capsfilter.set_property("caps", &caps).unwrap();  
+    capsfilter.try_set_property("caps", &caps).unwrap();  
     gst::Element::link_many(&[&capsfilter, &payloader])?;
 
     // network and transport
@@ -57,20 +58,20 @@ pub fn create_bin(
     rtcp_udp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_0"))?;
 
     // set rtp ip and port
-    rtp_udp_sink.set_property("host", server_address)?;
-    rtp_udp_sink.set_property("port", rtp_send_port)?;
+    rtp_udp_sink.try_set_property("host", server_address)?;
+    rtp_udp_sink.try_set_property("port", rtp_send_port)?;
 
     // required?
-    rtp_udp_sink.set_property("sync", &true)?;
-    rtp_udp_sink.set_property("async", &false)?;
+    rtp_udp_sink.try_set_property("sync", &true)?;
+    rtp_udp_sink.try_set_property("async", &false)?;
     
 
     debug!("RTCP SEND PORT: {}", rtcp_send_port);
     // set rtcp ip and port (disable async and sync)
-    rtcp_udp_sink.set_property("host", server_address)?;
-    rtcp_udp_sink.set_property("port", rtcp_send_port)?;
-    rtcp_udp_sink.set_property("async", &false)?; 
-    rtcp_udp_sink.set_property("sync", &false)?;
+    rtcp_udp_sink.try_set_property("host", server_address)?;
+    rtcp_udp_sink.try_set_property("port", rtcp_send_port)?;
+    rtcp_udp_sink.try_set_property("async", &false)?; 
+    rtcp_udp_sink.try_set_property("sync", &false)?;
 
 
     
@@ -78,14 +79,14 @@ pub fn create_bin(
     //multicast-iface=enp5s0
 
     debug!("RTCP RECEIVE PORT: {}", rtcp_receiver_port);
-    rtcp_udp_src.set_property("address", server_address)?;
-    rtcp_udp_src.set_property("port", rtcp_receiver_port)?;
-    //rtcp_udp_sink.set_property("async", &true)?; 
+    rtcp_udp_src.try_set_property("address", server_address)?;
+    rtcp_udp_src.try_set_property("port", rtcp_receiver_port)?;
+    //rtcp_udp_sink.try_set_property("async", &true)?; 
 
-    rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    //rtpbin.set_property("ntp-sync", &true)?;
+    rtpbin.try_set_property_from_str("ntp-time-source", "clock-time")?;
+    //rtpbin.try_set_property("ntp-sync", &true)?;
 
-    //rtpbin.set_property("rtcp-sync-send-time", &false)?;
+    //rtpbin.try_set_property("rtcp-sync-send-time", &false)?;
     
     rtpbin.connect_pad_added(move |el, pad| {
         let name = pad.name().to_string();
@@ -95,9 +96,9 @@ pub fn create_bin(
 
     if let Some(multicast_interface) = multicast_interface {
         debug!("set multicast interface {}", multicast_interface);
-        rtp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
-        rtcp_udp_sink.set_property("multicast-iface", &multicast_interface)?;
-        rtcp_udp_src.set_property("multicast-iface", &multicast_interface)?;
+        rtp_udp_sink.try_set_property("multicast-iface", &multicast_interface)?;
+        rtcp_udp_sink.try_set_property("multicast-iface", &multicast_interface)?;
+        rtcp_udp_src.try_set_property("multicast-iface", &multicast_interface)?;
     }
 
     let ghost_pad = gst::GhostPad::with_target(Some("sink"), &capsfilter.static_pad("sink").unwrap())?;

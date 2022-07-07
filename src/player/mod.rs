@@ -196,9 +196,9 @@ impl PlaybackClient {
             }
         };
 
-        rtcp_eingang.set_property( "address", server)?;
-        rtcp_senden.set_property("host", server)?;
-        rtp_eingang.set_property( "address", server)?;
+        rtcp_eingang.try_set_property( "address", server)?;
+        rtcp_senden.try_set_property("host", server)?;
+        rtp_eingang.try_set_property( "address", server)?;
         
         sleep_ms!(200);
         self.pipeline.set_state(gst::State::Ready)?;
@@ -217,7 +217,7 @@ impl PlaybackClient {
     pub fn change_clock(&mut self, clock: &str) -> Result<(), anyhow::Error> {
         self.stop();
         
-        debug!("change current clock address {} to {}", self.clock.address().unwrap_or(glib::GString::from("-unknown-")), clock);
+        //debug!("change current clock address {} to {}", self.clock.address().unwrap_or(glib::GString::from("-unknown-")), clock);
         
 
         let (clock, clock_bus) = create_net_clock(&self.pipeline, clock, 8555)?;
@@ -251,7 +251,7 @@ impl PlaybackClient {
         let sink = gst::ElementFactory::make(element, None)?;
 
         if let Some(d) = device {
-            sink.set_property("device", d)?;
+            sink.try_set_property("device", d)?;
         }
 
         
@@ -296,35 +296,35 @@ fn create_pipeline(
 
     let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
 
-    rtp_src.set_property("caps", &caps)?;
-    rtp_src.set_property("port", rtp_port as i32)?;
-    rtp_src.set_property("address", &server_ip)?;
+    rtp_src.try_set_property("caps", &caps)?;
+    rtp_src.try_set_property("port", rtp_port as i32)?;
+    rtp_src.try_set_property("address", &server_ip)?;
 
     let rtcp_src = make_element("udpsrc", Some("rtcp_eingang"))?;
-    rtcp_src.set_property("port", rtcp_recv_port as i32)?;
-    rtcp_src.set_property("address", &server_ip)?;
+    rtcp_src.try_set_property("port", rtcp_recv_port as i32)?;
+    rtcp_src.try_set_property("address", &server_ip)?;
 
     let rtcp_sink = make_element("udpsink", Some("rtcp_senden"))?;
-    rtcp_sink.set_property("port", rtcp_send_port as i32)?;
-    rtcp_sink.set_property("host", &server_ip)?;
+    rtcp_sink.try_set_property("port", rtcp_send_port as i32)?;
+    rtcp_sink.try_set_property("host", &server_ip)?;
 
-    rtcp_sink.set_property("async", &false)?; 
-    rtcp_sink.set_property("sync", &false)?;
+    rtcp_sink.try_set_property("async", &false)?; 
+    rtcp_sink.try_set_property("sync", &false)?;
 
-    //rtcp_sink.set_property("bind-address", &server_ip)?;
+    //rtcp_sink.try_set_property("bind-address", &server_ip)?;
 
     if let Some(multicast_interface) = multicast_interface {
-        rtp_src.set_property("multicast-iface", &multicast_interface)?;
-        rtcp_src.set_property("multicast-iface", &multicast_interface)?;
-        rtcp_sink.set_property("multicast-iface", &multicast_interface)?;
+        rtp_src.try_set_property("multicast-iface", &multicast_interface)?;
+        rtcp_src.try_set_property("multicast-iface", &multicast_interface)?;
+        rtcp_sink.try_set_property("multicast-iface", &multicast_interface)?;
     }
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
-    rtpbin.set_property_from_str("buffer-mode", "synced");
-    rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
-    rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    rtpbin.set_property("ntp-sync", &true)?;
-    rtpbin.set_property("autoremove", &true)?;
+    rtpbin.try_set_property_from_str("buffer-mode", "synced");
+    rtpbin.try_set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
+    rtpbin.try_set_property_from_str("ntp-time-source", "clock-time");
+    rtpbin.try_set_property("ntp-sync", &true)?;
+    rtpbin.try_set_property("autoremove", &true)?;
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
@@ -343,7 +343,7 @@ fn create_pipeline(
 
     let sink = if let Some(device) = audio_device {
         let sink = make_element("alsasink", Some("sink"))?;
-        sink.set_property("device", device);
+        sink.try_set_property("device", device);
         sink
     } else {
         make_element("autoaudiosink", Some("sink"))?
@@ -353,7 +353,7 @@ fn create_pipeline(
     pipeline.add(&convert)?;
     pipeline.add(&sink)?;
 
-    sink.set_property("sync", &true)?;
+    sink.try_set_property("sync", &true)?;
     
 
     gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
@@ -403,8 +403,8 @@ fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Resul
     let clock = gst_net::NetClientClock::new(None, address, port, 0 * gst::ClockTime::MSECOND);
         
     let clock_bus = gst::Bus::new();
-    clock.set_property("bus", &clock_bus)?;
-    clock.set_property("timeout", 2 as u64)?;
+    clock.try_set_property("bus", &clock_bus)?;
+    clock.try_set_property("timeout", 2 as u64)?;
 
     clock_bus.add_watch(move |_, msg| {
         //use gst::MessageView;

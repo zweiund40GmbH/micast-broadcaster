@@ -6,6 +6,7 @@ pub struct Builder {
     server_ip: Option<String>, 
     tcp_port: Option<i32>,
     rate: Option<i32>,
+
     /*rtp_sender_port:  Option<i32>, 
     rtcp_sender_port: Option<i32>, 
     rtcp_receive_port: Option<i32>, 
