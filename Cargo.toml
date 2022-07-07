@@ -1,6 +1,6 @@
 [package]
 name = "micast-broadcaster"
-version = "0.1.13"
+version = "0.2.1"
 edition = "2018"
 
 
@@ -9,11 +9,6 @@ edition = "2018"
 [dependencies]
 
 memchr = "^2.5"
-gstreamer = { version = "^0.18", features = ["v1_16"] }
-gstreamer-net = { version = "^0.18", features = ["v1_16"] }
-gstreamer-controller = { version = "^0.18", features = ["v1_16"] }
-
-glib = { version = "^0.15" }
 
 anyhow = "1.0"
 log = "0.4"
