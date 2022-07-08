@@ -18,9 +18,14 @@ quick-xml = { version = "0.23", features = [ "serialize" ] }
 chrono = { version = "0.4", features = [ "serde" ] }
 once_cell = "1.0"
 
-reqwest = { version = "0.11", features = ["blocking"]}
+reqwest = { version = "0.11", features = ["blocking", "stream"]}
 async-std = {version = "1.12", features = ["attributes", "tokio1"]}
 futures = "0.3"
+
+rodio = { version = "0.15", features = ["symphonia"] }
+symphonia = { version = "0.5"}
+
+bytes = "1.1"
 
 [dev-dependencies]
 env_logger = "0.9"
