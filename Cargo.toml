@@ -27,7 +27,7 @@ quick-xml = { version = "0.23", features = [ "serialize" ] }
 chrono = { version = "0.4", features = [ "serde" ] }
 
 reqwest = { version = "0.11", features = ["blocking"]}
-async-std = {version = "1.12", features = ["attributes", "tokio1"]}
+async-std = {version = "1.11", features = ["attributes", "tokio1"]}
 futures = "0.3"
 
 [dev-dependencies]
