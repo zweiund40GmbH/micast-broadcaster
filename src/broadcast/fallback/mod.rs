@@ -259,12 +259,12 @@ impl Fallback {
         let source = make_element("uridecodebin", None)?;
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
 
-        source.connect("source-setup", false, |r| {
-            let ins = r[1].get::<gst::Element>().unwrap();
-            ins.set_property("proxy", "http://127.0.0.1:9090");
-        
-            None
-        });
+        //source.connect("source-setup", false, |r| {
+        //    let ins = r[1].get::<gst::Element>().unwrap();
+        //    ins.set_property("proxy", "http://127.0.0.1:9090");
+        //
+        //    None
+        //});
 
         let s = self.clone();
         let self_downgrade = s.downgrade();
