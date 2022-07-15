@@ -1,6 +1,6 @@
 [package]
 name = "micast-broadcaster"
-version = "0.1.13"
+version = "0.1.14"
 edition = "2018"
 
 
@@ -10,12 +10,11 @@ edition = "2018"
 
 memchr = "^2.5"
 
-gst = { package = "gstreamer", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
-gst-base = { package = "gstreamer-base", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
-gst-audio = { package = "gstreamer-audio", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
-gst-video = { package = "gstreamer-video", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
-gst-controller = { package = "gstreamer-controller", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
-gst-net = { package = "gstreamer-net", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
+gst = { package = "gstreamer", version="0.18" }
+gst-base = { package = "gstreamer-base", version="0.18" }
+gst-audio = { package = "gstreamer-audio", version="0.18" }
+gst-controller = { package = "gstreamer-controller", version="0.18" }
+gst-net = { package = "gstreamer-net", version="0.18" }
 
 once_cell = "1.0"
 parking_lot = "0.12"
