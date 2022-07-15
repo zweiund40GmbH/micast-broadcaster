@@ -1,8 +1,7 @@
 
 pub(crate) mod local_player;
-use gstreamer as gst;
 use gst::prelude::*;
-use gstreamer_net as gst_net;
+use gst::glib;
 use log::{debug,warn};
 use anyhow::{anyhow};
 
@@ -400,7 +399,7 @@ fn create_pipeline(
 }
 
 fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<(gst_net::NetClientClock,gst::Bus), anyhow::Error> {
-    let clock = gst_net::NetClientClock::new(None, address, port, 0 * gst::ClockTime::MSECOND);
+    let clock = gst_net::NetClientClock::new("networkclock1", address, port, 0 * gst::ClockTime::MSECOND);
         
     let clock_bus = gst::Bus::new();
     clock.try_set_property("bus", &clock_bus)?;

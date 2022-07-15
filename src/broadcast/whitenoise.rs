@@ -3,7 +3,6 @@
 ///
 ///
 
-use gstreamer as gst;
 use gst::prelude::*;
 
 use anyhow::{bail, Result};
@@ -21,7 +20,7 @@ pub struct Silence {
 
 
 impl Silence {
-    pub fn new() -> Result<Silence> {
+    pub fn new(rate: i32) -> Result<Silence> {
 
         let bin = gst::Bin::new(None);
 
@@ -29,6 +28,7 @@ impl Silence {
         tsrc.set_property_from_str("wave", "silence");
         //tsrc.set_property_from_str("wave", "sine");
         //tsrc.set_property_from_str("wave", "silence");
+        //tsrc.set_property_from_str("wave", "ticks");
         //tsrc.set_property("freq", 2000.0f64.to_value())?;
         tsrc.set_property_from_str("freq", "2000");
         tsrc.try_set_property("is-live", &false)?;
@@ -39,7 +39,7 @@ impl Silence {
         let capsfilter = make_element("capsfilter", None)?;
 
         let caps = gst::Caps::builder("audio/x-raw")
-            .field("rate", &44100i32)
+            .field("rate", &rate)
             .field("channels", &2i32)
             .build();
         capsfilter.try_set_property("caps", &caps)?;     

@@ -7,17 +7,17 @@ mod mixer_bin;
 mod volume;
 mod whitenoise;
 mod methods;
-mod playlist;
+mod fallback;
 
 pub use builder::Builder;
 
-use gstreamer as gst;
 use gst::prelude::*;
+use gst::glib;
+use chrono::prelude::*;
 
 use crate::helpers::*;
 use crate::sleep_ms;
 
-use crate::gst_plugins;
 
 use std::{
     sync::{Arc, Mutex, RwLock, Weak},
@@ -40,6 +40,12 @@ struct SenderCommand {
     volume: f32,
 }
 
+#[derive(Debug, Default)]
+struct SchedulerState {
+    run_id: Mutex<Option<glib::SourceId>>,
+    scheduler: Mutex<Option<crate::Scheduler>>,
+}
+
 // Actual broadcast server state
 #[derive(Debug)]
 pub struct BroadcastInner {
@@ -53,13 +59,17 @@ pub struct BroadcastInner {
 
     #[allow(dead_code)]
     silence: whitenoise::Silence,
-
-    plylsts: Arc<Mutex<Vec<playlist::Playlist>>>,
+    
+    fallback: fallback::Fallback,
 
     volumecontroller_mainmixer_spots: volume::Control,
 
     running_time: RwLock<gst::ClockTime>,
     current_spot: RwLock<Option<spots::Item>>,
+
+    rate: Option<i32>,
+
+    scheduler: SchedulerState,
 }
 
 // To be able to access the App's fields directly
@@ -104,10 +114,14 @@ impl Broadcast {
     > {
 
 
-        debug!("init gstreamer");
-        let _ = gst::init();
-        gst_plugins::plugin_register_static()?;
 
+        debug!("init gstreamer audiorate: {}", rate);
+        let _ = gst::init();
+
+        let default_caps = gst::Caps::builder("audio/x-raw")
+            .field("rate", &rate)
+            .field("channels", &2i32)
+            .build();
 
         // Get a main context...
         let main_context = glib::MainContext::default();
@@ -133,23 +147,24 @@ impl Broadcast {
 
 
         // setup audiomixer for broadcast schedule notifications or advertising
-        let caps = gst::Caps::builder("audio/x-raw")
-            .field("rate", &rate)
-            .field("channels", &2i32)
-            //.field("channel-mask", gst::Bitmask(0x0000000000000000))
-            .build();
+
         debug!("create the mainmixer");
-        let mainmixer = mixer_bin::Mixer::new("mainmixer", Some("adder"),Some(caps), true)?;
+        let mainmixer = mixer_bin::Mixer::new("mainmixer", Some("adder"),Some(default_caps.clone()), true)?;
         //let mainmixer = mixer_bin::Mixer::new("mainmixer", Some("audiomixer"),None, false)?;
         mainmixer.add_to_pipeline(&pipeline)?;
             
         debug!("create the streammixer");
-        let streammixer = mixer_bin::Mixer::new("streammixer", Some("audiomixer"), None,false)?;
+
+        let streammixer = mixer_bin::Mixer::new("streammixer", Some("audiomixer"), Some(default_caps.clone()),false)?;
         streammixer.add_to_pipeline(&pipeline)?;
 
-        let silence = whitenoise::Silence::new()?;
+        let fallback_helper = fallback::Fallback::new(&pipeline, &streammixer)?;
+
+        let silence = whitenoise::Silence::new(rate)?;
         silence.add_to_pipeline(&pipeline)?;
         silence.attach_to_mixer(&streammixer)?;
+
+        
 
         // Volume control for_ spot playback
         let volumecontroller_mainmixer_spots = volume::Control::new();
@@ -165,10 +180,27 @@ impl Broadcast {
 
         // output of mainmixer goes to input of tcp_output
         debug!("link mainmixer src with tcp_output sink");
-        mainmixer.link_pads(Some("src"), &tcp_output, Some("sink"))?;
+
+        // global resample
+        let mainresampler = make_element("audioresample", Some("mainresampler"))?;
+        pipeline.add(&mainresampler)?;
+
+        let maincapfilter_caps = gst::Caps::builder("audio/x-raw")
+            .field("rate", &44100i32)
+            .field("channels", &2i32)
+            .build();
+        let maincapfilter = make_element("capsfilter", Some("maincapsfilter"))?;
+        maincapfilter.try_set_property("caps", &maincapfilter_caps)?;
+        pipeline.add(&maincapfilter)?;
+
+        mainmixer.link_pads(Some("src"), &mainresampler, Some("sink"))?;
+        mainresampler.link_pads(Some("src"), &maincapfilter, Some("sink"))?;
+        maincapfilter.link_pads(Some("src"), &tcp_output, Some("sink"))?;
 
         let bus = pipeline.bus().expect("Pipeline without bus should never happen");
         let _cmd_tx = commands_tx.clone();
+
+
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             commands_tx,
@@ -178,12 +210,14 @@ impl Broadcast {
 
             silence,
 
-            plylsts: Arc::new(Mutex::new(Vec::new())),
+            fallback: fallback_helper,
+            scheduler: SchedulerState::default(),
 
             volumecontroller_mainmixer_spots,
 
             running_time: RwLock::new(gst::ClockTime::ZERO),
             current_spot: RwLock::new(None),
+            rate: Some(rate),
         }));
 
 
@@ -193,7 +227,7 @@ impl Broadcast {
             use gst::MessageView;
             
 
-            let _broadcast = match broadcast_weak.upgrade() {
+            let broadcast = match broadcast_weak.upgrade() {
                 Some(broadcast) => broadcast,
                 None => return gst::BusSyncReply::Pass,
             };
@@ -206,12 +240,23 @@ impl Broadcast {
                     // to stop execution here.
                 }
                 MessageView::Error(err) => {
-                    warn!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
+                    let src = match err.src().and_then(|s| s.downcast::<gst::Element>().ok()) {
+                        None => {
+                            warn!("could not handle error cause no element found");
+                            return gst::BusSyncReply::Pass;
+                        },
+                        Some(src) => src,
+                    };
+                    warn!("error comes from: {:?}", src.name());
+
+                    if src.has_as_ancestor(&broadcast.fallback.bin) {
+                        warn!("error comes from fallback");
+                        let _ = broadcast.fallback.handle_error();
+
+                        
+                    }
+
+
                 }
                 _ => (),
             };
@@ -219,19 +264,8 @@ impl Broadcast {
             gst::BusSyncReply::Pass
         });
 
-
         broadcast.add_streammixer()?;
     
-        let broadcast_weak = broadcast.downgrade();
-        glib::timeout_add(std::time::Duration::from_secs(5), move || {
-            let _broadcast = match broadcast_weak.upgrade() {
-                Some(broadcast) => broadcast,
-                None => return Continue(true)
-            };
-            //broadcaster.print_graph();
-            Continue(true)
-        });
-
         let broadcast_weak = broadcast.downgrade();
         glib::timeout_add(std::time::Duration::from_millis(5000), move || {
             let broadcast = match broadcast_weak.upgrade() {
@@ -276,6 +310,7 @@ impl Broadcast {
             original_sinkpad.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
                 let broadcast = upgrade_weak!(broadcast_clone, gst::PadProbeReturn::Pass);
                 methods::pad_helper::running_time_method(pad, info, |clock| {
+                    
                     let mut w = broadcast.running_time.write().unwrap();
                     *w = *clock;
                     drop(w);
@@ -298,6 +333,8 @@ impl Broadcast {
 
     pub fn start(&self) -> Result<(), anyhow::Error> {
         self.pipeline.set_state(gst::State::Playing)?;
+        
+
 
         Ok(())
     }
@@ -314,31 +351,64 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn set_playlist(&self, list: Vec<&str>) -> Result<(), anyhow::Error> {
-        
-        info!("set the playlist: {:#?}", list);
-
-        let mut p = self.plylsts.lock().unwrap();
-
-        
-        
-        let plylst = if let Some(current_playlist) = p.pop() {
-            let string_uris: Vec<String> = list.iter().map(|&s|s.into()).collect();
-            info!("change the playlist");
-            current_playlist.playlist.set_property("uris", string_uris );
-            current_playlist.cleanup();
-            current_playlist
-        } else {
-            playlist::Playlist::new(&self.pipeline, &self.streammixer, list)?
-        };
-        p.push(plylst);
-
-    
+    pub fn play(&self, uri: &str) -> Result<(), anyhow::Error> {
+        info!("start playing: {}", uri);
+        self.fallback.start(Some(uri))?;
         Ok(())
     }
 
+    pub fn set_scheduler(&self, scheduler: crate::Scheduler) {
+        let state = &self.scheduler;
 
-    pub fn spot_is_running(&self) -> bool {
+        let mut run_id = state.run_id.lock().unwrap();
+
+        if let Some(id) = run_id.take() {
+            id.remove();
+            *run_id = None;
+        }
+
+        drop(run_id);
+
+        let mut scheduler_guard = state.scheduler.lock().unwrap();
+        *scheduler_guard = Some(scheduler);
+        drop(scheduler_guard);
+
+        self.spot_runner();
+
+    }
+
+    fn spot_runner(&self) {
+        //let self_weak = self.downgrade();
+        let broadcast_clone = self.downgrade();
+        let id = glib::timeout_add(std::time::Duration::from_millis(5000), move || {
+            let broadcast = upgrade_weak!(broadcast_clone, Continue(true));
+
+            let mut scheduler_guard = broadcast.scheduler.scheduler.lock().unwrap();
+            let deref_scheduler = scheduler_guard.take();
+            if let Some(mut scheduler) = deref_scheduler {
+                if !broadcast.spot_is_running() {
+                    if let Ok(spot) = scheduler.next(Local::now()) {
+                        if let Err(e) = broadcast.play_spot(&spot.uri, Some(0.8)) {
+                            warn!("error on play next spot... {:?}", e);
+                        }
+                    }
+                }
+                *scheduler_guard = Some(scheduler);
+            } else {
+                warn!("no scheduler in broadcaster found");
+            }
+            
+            drop(scheduler_guard);
+            
+            Continue(true)
+        });
+
+        let mut run_id = self.scheduler.run_id.lock().unwrap();
+        *run_id = Some(id);
+        drop(run_id);
+    }
+
+    fn spot_is_running(&self) -> bool {
         let s = self.current_spot.read().unwrap();
 
         if let Some(spot) = &*s {
@@ -358,17 +428,18 @@ impl Broadcast {
     }
 
     // play a spot
-    pub fn play_spot(&self, uri: &str, spot_volume: Option<f64>) -> Result<(), anyhow::Error> {
+    fn play_spot(&self, uri: &str, spot_volume: Option<f64>) -> Result<(), anyhow::Error> {
 
         info!("play a spot {}", uri);
 
         let mixer = &self.mainmixer;
         
         let broadcast_clone = self.downgrade();
-        let item = self::spots::Item::new(uri, broadcast_clone)?;
+        let item = self::spots::Item::new(uri, broadcast_clone, self.rate)?;
         self.activate_item(&item, &mixer)?;
         
         let start_time = self.running_time.read().unwrap();
+        warn!("what is the current running time? {:?}", start_time);
         let c = start_time.clone();
         drop(start_time);
 
@@ -461,7 +532,7 @@ impl Broadcast {
             });
 
             // REMOVE BLOCKING
-            #[cfg(all(target_os = "macos"))]
+            //#[cfg(all(target_os = "macos"))]
             if !item.has_block_id() {
                 warn!("Item has no Blocked Pad");
             } else {

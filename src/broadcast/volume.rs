@@ -3,11 +3,8 @@
 ///
 ///
 
-use gstreamer_controller as gst_controller;
 use gst_controller::prelude::*;
 use anyhow;
-
-use gstreamer as gst;
 
 #[derive(Debug)]
 pub struct Control{

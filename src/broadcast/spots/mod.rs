@@ -1,7 +1,6 @@
 
 
 use log::{debug,warn,info};
-use gstreamer as gst;
 use gst::prelude::*;
 use crate::helpers::{make_element, upgrade_weak};
 use super::methods;
@@ -62,6 +61,7 @@ pub struct ItemInner {
     pub(crate) bin: gst::Bin,
     //pub(crate) dec: Option<gst::Element>,
     pub(crate) uri: String,
+    pub(crate) rate: Option<i32>,
     pub(crate) broadcast_clone: Option<super::BroadcastWeak>,
     values: RwLock<ShareableValues>,
 }
@@ -72,6 +72,7 @@ impl Default for ItemInner {
             bin: gst::Bin::new(None),
             //dec: None,
             uri: "".to_string(),
+            rate: None,
             broadcast_clone: None,
             values: RwLock::new(ShareableValues::default()),
         }
@@ -110,6 +111,7 @@ impl Item {
     pub fn new(
         location: &str, 
         broadcast: super::BroadcastWeak,
+        rate: Option<i32>,
     ) -> Result<Item, anyhow::Error> {
 
         // create a bin that hold the decoder
@@ -119,7 +121,7 @@ impl Item {
         let dec = make_element("uridecodebin", None)?;
         dec.try_set_property("uri", &location)?;
 
-        info!("create new spot {}", location);
+        info!("create new spot {} with audio rate {}", location, rate.unwrap_or(44100));
         dec.try_set_property("use-buffering", &true)?;
 
         // add element to bin
@@ -130,6 +132,7 @@ impl Item {
             //dec: Some(dec.clone()),
             uri: location.to_string(),
             broadcast_clone: Some(broadcast.clone()),
+            rate: rate,
             ..Default::default()
         }));
        
@@ -211,17 +214,17 @@ impl Item {
         let capsfilter = make_element("capsfilter", None)?;
 
         let caps = gst::Caps::builder("audio/x-raw")
-            .field("rate", &44100i32)
+            .field("rate", &self.rate.unwrap_or(44100i32))
             .field("channels", &2i32)
             .build();
         capsfilter.try_set_property("caps", &caps)?;     
         
         self.bin.add_many(&[&audioresample, &capsfilter, &audioconvert, &queue])?;
     
-        let sinkpad = audioresample.static_pad("sink").unwrap();
+        let sinkpad = audioconvert.static_pad("sink").unwrap();
         pad.link(&sinkpad)?;
     
-        gst::Element::link_many(&[&audioresample, &audioconvert, &capsfilter, &queue ])?;
+        gst::Element::link_many(&[&audioconvert, &audioresample, &capsfilter, &queue ])?;
         
         let srcpad = queue.static_pad("src").unwrap();
     
@@ -240,8 +243,8 @@ impl Item {
         }
 
 
-        #[cfg(all(target_os = "macos"))]
-        {
+        //#[cfg(all(target_os = "macos"))]
+        //{
             let block_probe_type = gst::PadProbeType::BLOCK | gst::PadProbeType::BUFFER | gst::PadProbeType::BUFFER_LIST;
             
             let item_clone = self.downgrade();
@@ -250,7 +253,7 @@ impl Item {
                 //warn!("joooooo");
                 item.pad_probe_blocked(pad, probe_info)
             });
-        }
+        //}
 
 
     

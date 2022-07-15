@@ -1,5 +1,6 @@
-use gstreamer as gst;
+
 use gst::prelude::*;
+use gst::glib;
 
 use log::{debug, warn};
 use std::str::FromStr;
@@ -52,27 +53,44 @@ impl LocalPlayer {
                     sleep_ms!(100);
                 }
                 MessageView::Error(err) => {
-                    if let Some(element) = err.src() {
-                        if element.name() == "local_tcpclient" {
-                            let raw_error = err.error().into_raw();
-                            let error_code = unsafe {
-                                (*raw_error).code
-                            };
-                            if error_code == 5 {
-                                warn!("connection could not get working... retry");
-                                sleep_ms!(2400);
-                                let _ = pipeline.set_state(gst::State::Ready);
-                                let _ = pipeline.set_state(gst::State::Playing);
+                    let src = match err.src().and_then(|s| s.downcast::<gst::Element>().ok()) {
+                        None => {
+                            warn!("could not handle error cause no element found");
+                            return glib::Continue(true);
+                        },
+                        Some(src) => src,
+                    };
+                    if src.name() == "local_tcpclient" {
+                        //warn!("element what makes the error ist local_tcpclient: {:?}", src.path_string());
+                        
+
+                        if let Some(a) = err.error().kind::<gst::ResourceError>() {
+                            match a {
+                                gst::ResourceError::OpenRead => { 
+                                    warn!("Local tcp client cannot open the stream, we want to restart it");
+                                    sleep_ms!(2400);
+                                    let _ = pipeline.set_state(gst::State::Ready);
+                                    let _ = pipeline.set_state(gst::State::Playing);
+                                }
+                                _ => {
+                                    warn!("error not handled: {:?}", a);
+                                }
                             }
                         } else {
-                            warn!("received error {:#?}", err);
-                            sleep_ms!(4600);
-                            let _ = pipeline.set_state(gst::State::Ready);
-                            let _ = pipeline.set_state(gst::State::Playing);
-
+                            warn!("error: {:?}", err.error());
                         }
                     } else {
-                        warn!("received an error {:#?}", err);
+                       
+                        if let Some(parent) = src.parent() {
+                            if parent.name() == "audiosink" {
+                                sleep_ms!(1000);
+                                let _ = pipeline.set_state(gst::State::Ready);
+                                let _ = pipeline.set_state(gst::State::Playing);
+                                return glib::Continue(true);
+                            }
+                        }
+
+                        warn!("receive an error from {:?}", src.name());
                     }
                 }
                 _ => {
@@ -86,6 +104,7 @@ impl LocalPlayer {
         let tcp_client = make_element("tcpclientsrc", Some("local_tcpclient"))?;
         tcp_client.try_set_property("port", &port)?;
         tcp_client.try_set_property("host", "127.0.0.1")?;
+        //tcp_client.try_set_property("host", "10.42.200.43")?;
 
         let srcpad = tcp_client.static_pad("src").unwrap();
 

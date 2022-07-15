@@ -1,5 +1,4 @@
 
-use gstreamer as gst;
 use gst::prelude::*;
 use anyhow;
 
