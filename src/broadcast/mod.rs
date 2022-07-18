@@ -67,7 +67,7 @@ pub struct BroadcastInner {
     running_time: RwLock<gst::ClockTime>,
     current_spot: RwLock<Option<spots::Item>>,
 
-    net_clock: gst_net::NetTimeProvider,
+    net_clock: Mutex<gst_net::NetTimeProvider>,
 
     rate: Option<i32>,
 
@@ -237,7 +237,7 @@ impl Broadcast {
 
             volumecontroller_mainmixer_spots,
 
-            net_clock,
+            net_clock: Mutex::new(net_clock),
 
             running_time: RwLock::new(gst::ClockTime::ZERO),
             current_spot: RwLock::new(None),
@@ -318,6 +318,20 @@ impl Broadcast {
         });
     
 
+        let broadcast_weak = broadcast.downgrade();
+        glib::timeout_add(std::time::Duration::from_secs(10), move || {
+            let broadcast = match broadcast_weak.upgrade() {
+                Some(broadcast) => broadcast,
+                None => return Continue(false)
+            };
+
+            if let Err(e) = broadcast.change_ips(Some("224.1.1.20"), None) {
+                warn!("could not change ip {}", e);
+            }
+
+            Continue(false)
+        });
+
 
         Ok(
             broadcast
@@ -351,6 +365,50 @@ impl Broadcast {
         } else {
             warn!("could not get a requested sink_pad from mainmixer! - possible no output");
         }
+
+        Ok(())
+    }
+
+    pub fn change_ips(&self, broadcast_ip: Option<&str>, clock_ip: Option<&str>) -> Result<(), anyhow::Error> {
+
+        
+        // rtp_udp_sink - host - network_rtp_sink
+        // rtcp_udp_sink - host - network_rtcp_sink
+        // rtcp_udp_src - address - network_rtcp_src
+        self.pipeline.set_state(gst::State::Paused)?;
+
+
+        if let Some(broadcast_ip) = broadcast_ip {
+            let rtp_udp_sink = self.pipeline.by_name("network_rtp_sink").unwrap();
+            let old_ip: String = rtp_udp_sink.property("host");
+
+            info!("change broadcast ip from {} to {}", old_ip, broadcast_ip);
+
+            let rtcp_udp_sink = self.pipeline.by_name("network_rtcp_sink").unwrap();
+            let rtcp_udp_src = self.pipeline.by_name("network_rtcp_src").unwrap();
+    
+            rtp_udp_sink.try_set_property("host", broadcast_ip)?;
+            rtcp_udp_sink.try_set_property("host", broadcast_ip)?;
+            rtcp_udp_src.try_set_property("address", broadcast_ip)?;
+        }
+
+        if let Some(clock_ip) = clock_ip {
+            let mut net_clock = self.net_clock.lock().unwrap();
+            let old_ip: String = net_clock.address().unwrap().to_string();
+            let port: i32 = net_clock.port();
+            let clock = net_clock.clock().unwrap();
+            
+            info!("change clock ip from {} to {}", old_ip, clock_ip);
+
+            let new_net_clock = gst_net::NetTimeProvider::new(&clock, Some(clock_ip), port);
+            *net_clock = new_net_clock;
+            self.pipeline.use_clock(Some(&clock));
+            drop(net_clock);
+        }
+        
+       
+
+        self.pipeline.set_state(gst::State::Playing)?;
 
         Ok(())
     }

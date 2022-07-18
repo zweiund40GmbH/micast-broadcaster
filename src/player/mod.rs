@@ -2,15 +2,16 @@
 pub(crate) mod local_player;
 use gst::prelude::*;
 use gst::glib;
-use log::{debug,warn};
+use log::{debug,warn, info};
 use anyhow::{anyhow};
 
-
 use std::str::FromStr;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Weak};
+use parking_lot::{Mutex, RwLock};
 // playback client
 
-use crate::helpers::make_element;
+use crate::helpers::{make_element, upgrade_weak};
+
 use crate::sleep_ms;
 
 
@@ -20,18 +21,54 @@ const LATENCY:i32 = 900;
 const DEFAULT_AUDIO_RATE:i32 = 44100;
 
 
-/// Simple Playback Client for Playback RTP Server Stream
-pub struct PlaybackClient {
-    pub pipeline: gst::Pipeline,
-    output: gst::Element,
-    convert: gst::Element,
-    clock: gst_net::NetClientClock,
-    clock_bus: gst::Bus,
-    audio_rate: i32,
+struct State {
+    rtpbin: gst::Element,
+    source: gst::Element,
+    audio_in_src: gst::Pad,
+    recv_rtp_src: Option<gst::Pad>,
 }
 
 
+#[derive(Clone)]
+pub(crate) struct PlaybackClientWeak(Weak<PlaybackClientInner>);
+
+impl std::ops::Deref for PlaybackClient {
+    type Target = PlaybackClientInner;
+
+    fn deref(&self) -> &PlaybackClientInner {
+        &self.0
+    }
+}
+
+impl PlaybackClientWeak {
+    // Try upgrading a weak reference to a strong one
+    pub fn upgrade(&self) -> Option<PlaybackClient> {
+        self.0.upgrade().map(PlaybackClient)
+    }
+}
+
+
+/// Simple Playback Client for Playback RTP Server Stream
+pub struct PlaybackClientInner {
+    pub pipeline: gst::Pipeline,
+    convert: gst::Element,
+    rtpdepayload: gst::Element,
+    clock: gst_net::NetClientClock,
+    clock_bus: gst::Bus,
+    audio_rate: i32,
+    state: Arc<Mutex<State>>,
+}
+
+#[derive(Clone)]
+pub struct PlaybackClient(Arc<PlaybackClientInner>);
+
+
 impl PlaybackClient {
+
+    // Downgrade the strong reference to a weak reference
+    pub(crate) fn downgrade(&self) -> PlaybackClientWeak {
+        PlaybackClientWeak(Arc::downgrade(&self.0))
+    }
 
     /// Create a Playback Client
     /// 
@@ -56,7 +93,7 @@ impl PlaybackClient {
 
         debug!("init playback client");
 
-        let (pipeline, clock, convert, output, clock_bus) = create_pipeline(
+        let (pipeline, clock, convert, source, clock_bus, rtpbin, rtpdepayload) = create_pipeline(
             clock_ip,
             server_ip, 
             clock_port,
@@ -71,6 +108,63 @@ impl PlaybackClient {
         let pipeline_weak = pipeline.downgrade();
 
         let bus = pipeline.bus().unwrap();
+
+        let audio_in_src = convert.static_pad("src").unwrap();
+
+        let state = State { 
+            rtpbin: rtpbin.clone(),
+            source,
+            audio_in_src,
+            recv_rtp_src: None,
+        };
+
+        let playbackclient = PlaybackClient(Arc::new(PlaybackClientInner { 
+            pipeline,
+            clock,
+            convert,
+            rtpdepayload,
+            clock_bus,
+            audio_rate: audio_rate.unwrap_or(DEFAULT_AUDIO_RATE),
+            state: Arc::new(Mutex::new(state)),
+        }));
+
+        let weak_playbackclient = playbackclient.downgrade();
+        rtpbin.connect_pad_added(move |el, pad| {
+            let name = pad.name().to_string();
+            
+            let pbc = upgrade_weak!(weak_playbackclient);
+            let decoder = &pbc.rtpdepayload;
+            let decoder_sink = decoder.static_pad("sink").unwrap();
+
+            debug!("rtpbin pad_added: {} - {:?}", name, decoder);
+
+    
+            if name.contains("recv_rtp_src") {
+
+                let mut state_guard = pbc.state.lock();
+                
+                if let Some(recv_rtp_src) = state_guard.recv_rtp_src.as_ref() {
+                    info!("already initiate a recv_rtp pad {}. unlink it from rtpdepayload sink", recv_rtp_src.name());
+                    recv_rtp_src.unlink(&decoder_sink);
+                    info!("src_pad from rtpdepayload sink removed");
+                }
+
+                state_guard.recv_rtp_src = Some(pad.clone());
+                drop(state_guard);
+    
+                info!("link newley created pad {} to rtpdepayload sink", pad.name());
+                pad.link(&decoder_sink).expect("link of rtpbin pad to rtpdepayload sink should work");
+    
+                
+                pbc.pipeline.set_start_time(gst::ClockTime::NONE);
+    
+                
+                
+            }
+
+        });
+
+
 
         bus.add_watch(move |_, msg| {
             use gst::MessageView;
@@ -104,6 +198,27 @@ impl PlaybackClient {
                     };
 
                     warn!("receive an error from {:?}", src.name());
+
+                    if src.name() == "rtp_eingang" {
+                        let _ = pipeline.set_state(gst::State::Null);
+
+                        let weak_pipeline = pipeline.downgrade();
+                        glib::timeout_add(std::time::Duration::from_secs(5), move || {
+                            let pipeline = match weak_pipeline.upgrade() {
+                                Some(pipeline) => pipeline,
+                                None => {
+                                    warn!("cannot get upgraded weak ref from pipeline inside, handle_error for rtp_eingang stops");
+                                    return Continue(true)
+                                }
+                            };
+                 
+                            if let Err(e) = pipeline.set_state(gst::State::Playing) {
+                                warn!("error on call start pipeline inside rtp_eingang error : {}", e)
+                            }
+                
+                            Continue(false)
+                        });
+                    }
                     
                 }
                 /*MessageView::Buffering(buffering) => {
@@ -137,14 +252,7 @@ impl PlaybackClient {
         .expect("Failed to add bus watch");
 
         Ok(
-            PlaybackClient { 
-                pipeline,
-                clock,
-                convert,
-                output,
-                clock_bus,
-                audio_rate: audio_rate.unwrap_or(DEFAULT_AUDIO_RATE)
-            }
+          playbackclient  
         )
 
         
@@ -221,58 +329,57 @@ impl PlaybackClient {
     /// 
     /// * `clock` - IP Address / Hostname of the clock provider
     /// 
-    pub fn change_clock(&mut self, clock: &str) -> Result<(), anyhow::Error> {
-        self.stop();
-        
-        //debug!("change current clock address {} to {}", self.clock.address().unwrap_or(glib::GString::from("-unknown-")), clock);
-        
-
-        let (clock, clock_bus) = create_net_clock(&self.pipeline, clock, 8555)?;
-
-        //drop(self.clock);
-        //drop(self.clock_bus);
-
-        self.clock = clock;
-        self.clock_bus = clock_bus;
-
-        debug!("created a clock and wait 5 seconds now...");
-        sleep_ms!(5000);
-        //self.clock.set_address(Some(clock));
-
-
-        debug!("finished change clock...");
-
-        sleep_ms!(200);
-        self.start();
-        
-        Ok(())
-    }
+    //pub fn change_clock(&self, clock: &str) -> Result<(), anyhow::Error> {
+    //    self.stop();
+    //    
+    //    //debug!("change current clock address {} to {}", self.clock.address().unwrap_or(glib::GString::from("-unknown-")), clock);
+    //    
+    //    let (clock, clock_bus) = create_net_clock(&self.pipeline, clock, 8555)?;
+    //    //drop(self.clock);
+    //    //drop(self.clock_bus);
+    //    self.clock = clock;
+    //    self.clock_bus = clock_bus;
+    //    debug!("created a clock and wait 5 seconds now...");
+    //    sleep_ms!(5000);
+    //    //self.clock.set_address(Some(clock));
+    //    debug!("finished change clock...");
+    //    sleep_ms!(200);
+    //    self.start();
+    //    
+    //    Ok(())
+    //}
 
 
 
-    pub fn change_output(&mut self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
+    pub fn change_output(&self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
         
         self.stop();
 
         debug!("change_output, creates new element {}, with : {:?}", element, device);
-        let sink = gst::ElementFactory::make(element, None)?;
+        let source = gst::ElementFactory::make(element, None)?;
 
         if let Some(d) = device {
-            sink.try_set_property("device", d)?;
+            source.try_set_property("device", d)?;
         }
 
+        let mut state_guard = self.state.lock();
+        let old_sink_pad = state_guard.source.static_pad("sink").unwrap();
+
+
+        debug!("unlink audio sink from converter source");
+        let _ = state_guard.audio_in_src.unlink(&old_sink_pad);
         
-        debug!("unlink and remove old output");
-        self.convert.unlink(&self.output);
-        self.pipeline.remove(&self.output)?;
+        debug!("remove audio source element");
+        self.pipeline.remove(&state_guard.source)?;
         
         sleep_ms!(200);
 
         debug!("add and link new output");
-        self.pipeline.add(&sink)?;
-        self.convert.link(&sink)?;
+        self.pipeline.add(&source)?;
+        state_guard.audio_in_src.link(&source.static_pad("sink").unwrap())?;
+        state_guard.source = source;
+        drop(state_guard);
 
-        self.output = sink;
 
         self.start();
         Ok(())
@@ -293,7 +400,7 @@ fn create_pipeline(
     latency: Option<i32>,
     multicast_interface: Option<String>,
     audio_device: Option<String>,
-) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus), anyhow::Error> {
+) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus, gst::Element, gst::Element), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
@@ -367,43 +474,15 @@ fn create_pipeline(
 
 
     let last_pad_name: Arc< RwLock< Option<String>>> = Arc::new(RwLock::new(None));
-
-
     let play_element_downgraded = rtpdepayload.downgrade();
-
     let downgraded_pipeline = pipeline.downgrade();
-    rtpbin.connect_pad_added(move |el, pad| {
-        let name = pad.name().to_string();
-        let play_element = play_element_downgraded.upgrade().unwrap();
-        debug!("rtpbin pad_added: {} - {:?}", name, play_element);
-
-        let pipeline = downgraded_pipeline.upgrade().unwrap();
-
-        if name.contains("recv_rtp_src") {
-            {
-                if last_pad_name.read().unwrap().is_some() {
-                    el.unlink(&play_element);
-                }
-            }
-
-            el.link_pads(Some(&name), &play_element, None).expect("link should work");
-
-            
-            pipeline.set_start_time(gst::ClockTime::NONE);
-
-            {
-                let mut w = last_pad_name.write().unwrap();
-                *w = Some(name);
-            }
-            
-        }
-    });
+    
 
     pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
     let (clock, clock_bus) = create_net_clock(&pipeline, clock_ip, clock_port)?;
 
-    Ok((pipeline, clock, convert, sink, clock_bus))
+    Ok((pipeline, clock, convert, sink, clock_bus, rtpbin, rtpdepayload))
 }
 
 fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<(gst_net::NetClientClock,gst::Bus), anyhow::Error> {

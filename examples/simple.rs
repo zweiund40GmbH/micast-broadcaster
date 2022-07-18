@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let broadcaster = broadcast::Builder::new()
         //.set_server_ip("127.0.0.1")
         .set_server_ip("0.0.0.0")
-        .set_broadcast_ip("224.1.1.1")
+        .set_broadcast_ip("224.1.1.10")
         //.set_audiorate(44100 / 2)
         .set_audiorate(44100)
         .build_server()?;
@@ -35,7 +35,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     broadcaster.play("http://server35757.streamplus.de/stream.mp3")?;
 
-    
 
 
     main_loop.run();
