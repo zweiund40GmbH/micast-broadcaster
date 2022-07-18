@@ -355,7 +355,7 @@ impl PlaybackClient {
         
         self.stop();
 
-        debug!("change_output, creates new element {}, with : {:?}", element, device);
+        info!("change_output, creates new element {}, with : {:?}", element, device);
         let source = gst::ElementFactory::make(element, None)?;
 
         if let Some(d) = device {

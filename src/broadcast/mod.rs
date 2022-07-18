@@ -318,19 +318,18 @@ impl Broadcast {
         });
     
 
-        let broadcast_weak = broadcast.downgrade();
-        glib::timeout_add(std::time::Duration::from_secs(10), move || {
-            let broadcast = match broadcast_weak.upgrade() {
-                Some(broadcast) => broadcast,
-                None => return Continue(false)
-            };
-
-            if let Err(e) = broadcast.change_ips(Some("224.1.1.20"), None) {
-                warn!("could not change ip {}", e);
-            }
-
-            Continue(false)
-        });
+        //let broadcast_weak = broadcast.downgrade();
+        //glib::timeout_add(std::time::Duration::from_secs(10), move || {
+        //    let broadcast = match broadcast_weak.upgrade() {
+        //        Some(broadcast) => broadcast,
+        //        None => return Continue(false)
+        //    };
+        //
+        //    if let Err(e) = broadcast.change_ips(Some("224.1.1.20"), None) {
+        //        warn!("could not change ip {}", e);
+        //    }
+        //    Continue(false)
+        //});
 
 
         Ok(
