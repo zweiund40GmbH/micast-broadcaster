@@ -26,6 +26,8 @@ struct State {
     source: gst::Element,
     audio_in_src: gst::Pad,
     recv_rtp_src: Option<gst::Pad>,
+    clock: gst_net::NetClientClock,
+    //clock_bus: gst::Bus,
 }
 
 
@@ -53,10 +55,9 @@ pub struct PlaybackClientInner {
     pub pipeline: gst::Pipeline,
     convert: gst::Element,
     rtpdepayload: gst::Element,
-    clock: gst_net::NetClientClock,
-    clock_bus: gst::Bus,
     audio_rate: i32,
     state: Arc<Mutex<State>>,
+    clock_port: i32,
 }
 
 #[derive(Clone)]
@@ -93,7 +94,7 @@ impl PlaybackClient {
 
         debug!("init playback client");
 
-        let (pipeline, clock, convert, source, clock_bus, rtpbin, rtpdepayload) = create_pipeline(
+        let (pipeline, convert, source, rtpbin, rtpdepayload) = create_pipeline(
             clock_ip,
             server_ip, 
             clock_port,
@@ -104,6 +105,9 @@ impl PlaybackClient {
             multicast_interface,
             audio_device,
         )?;
+
+        //let (clock, clock_bus) = create_net_clock(&pipeline, clock_ip, clock_port)?;
+        let clock= create_net_clock(&pipeline, clock_ip, clock_port)?;
 
         let pipeline_weak = pipeline.downgrade();
 
@@ -116,16 +120,17 @@ impl PlaybackClient {
             source,
             audio_in_src,
             recv_rtp_src: None,
+            clock,
+            //clock_bus,
         };
 
         let playbackclient = PlaybackClient(Arc::new(PlaybackClientInner { 
             pipeline,
-            clock,
             convert,
             rtpdepayload,
-            clock_bus,
             audio_rate: audio_rate.unwrap_or(DEFAULT_AUDIO_RATE),
             state: Arc::new(Mutex::new(state)),
+            clock_port,
         }));
 
         let weak_playbackclient = playbackclient.downgrade();
@@ -251,6 +256,22 @@ impl PlaybackClient {
         })
         .expect("Failed to add bus watch");
 
+        //let weak_pbc = playbackclient.downgrade();
+        //glib::timeout_add(std::time::Duration::from_secs(10), move || {
+        //    let playbackclient = match weak_pbc.upgrade() {
+        //        Some(playbackclient) => playbackclient,
+        //        None => {
+        //            
+        //            return Continue(true)
+        //        }
+        //    };
+        //    
+        //    playbackclient.change_clock_and_server("10.42.200.179","224.1.1.48");
+        //    
+        //    Continue(false)
+        //});
+
+
         Ok(
           playbackclient  
         )
@@ -288,7 +309,12 @@ impl PlaybackClient {
         self.stop();
         
 
-        self.clock.set_address(Some(clock));
+        
+        let mut state_guard = self.state.lock();
+        let clock = create_net_clock(&self.pipeline, clock, self.clock_port)?;
+        state_guard.clock = clock;
+        drop(state_guard);
+
 
         let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
             Some(elem) => elem,
@@ -315,8 +341,6 @@ impl PlaybackClient {
         rtcp_senden.try_set_property("host", server)?;
         rtp_eingang.try_set_property( "address", server)?;
         
-        sleep_ms!(200);
-        self.pipeline.set_state(gst::State::Ready)?;
         sleep_ms!(200);
         self.start();
         
@@ -400,7 +424,7 @@ fn create_pipeline(
     latency: Option<i32>,
     multicast_interface: Option<String>,
     audio_device: Option<String>,
-) ->  Result<(gst::Pipeline, gst_net::NetClientClock, gst::Element, gst::Element, gst::Bus, gst::Element, gst::Element), anyhow::Error> {
+) ->  Result<(gst::Pipeline, gst::Element, gst::Element, gst::Element, gst::Element), anyhow::Error> {
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
@@ -471,28 +495,23 @@ fn create_pipeline(
     
 
     gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
-
-
-    let last_pad_name: Arc< RwLock< Option<String>>> = Arc::new(RwLock::new(None));
-    let play_element_downgraded = rtpdepayload.downgrade();
-    let downgraded_pipeline = pipeline.downgrade();
     
 
     pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
-    let (clock, clock_bus) = create_net_clock(&pipeline, clock_ip, clock_port)?;
+    
 
-    Ok((pipeline, clock, convert, sink, clock_bus, rtpbin, rtpdepayload))
+    Ok((pipeline, convert, sink, rtpbin, rtpdepayload))
 }
 
-fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<(gst_net::NetClientClock,gst::Bus), anyhow::Error> {
-    let clock = gst_net::NetClientClock::new(Some("networkclock1"), address, port, 0 * gst::ClockTime::MSECOND);
+fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<gst_net::NetClientClock, anyhow::Error> {
+    let clock = gst_net::NetClientClock::new(None, address, port, 0 * gst::ClockTime::MSECOND);
         
-    let clock_bus = gst::Bus::new();
-    clock.try_set_property("bus", &clock_bus)?;
+    //let clock_bus = gst::Bus::new();
+    //clock.try_set_property("bus", &clock_bus)?;
     clock.try_set_property("timeout", 2 as u64)?;
 
-    clock_bus.add_watch(move |_, msg| {
+    /*clock_bus.add_watch(move |_, msg| {
         //use gst::MessageView;
 
         //debug!("msg: {:?}", msg);
@@ -512,9 +531,9 @@ fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Resul
         // Tell the mainloop to continue executing this callback.
         glib::Continue(true)
     })
-    .expect("Failed to add bus watch");
+    .expect("Failed to add bus watch");*/
 
     pipeline.use_clock(Some(&clock));
 
-    Ok((clock, clock_bus))
+    Ok(clock)
 }
