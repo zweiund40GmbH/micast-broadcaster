@@ -33,51 +33,23 @@ fn main() -> Result<(), Box<anyhow::Error>> {
 
     let mut player = PlaybackClient::new(
         "224.1.1.1", 
-        "10.42.200.76", 
-        5000, // rtp in
-        5001, // rtcp recv
-        5007, // rtcp send
-        8555, 
-        None, 
-        Some("eth0".to_string()),
-        None).unwrap();        
+        "127.0.0.1", 
+        3333, // rtp in
+        3335, // rtcp recv
+        3336, // rtcp send
+        8555, // RTP Clock Source Port
+        Some(44100), // audio_rate
+        None, // latency
+        None, // multicas_interface
+        None, // audiodevice 
+    ).unwrap();        
 
 
     sleep_ms!(2);
     player.start();
 
-
-    
-    /*if let Err(e) = player.change_output("autoaudiosink", None) {
-        warn!("failed to change output");
-    }
-    info!("start..");
-    player.start();
-    info!("next...");
-
-    sleep!(10);
-    info!("change clock address target digger:");*/
-    
     //player.change_clock("10.42.200.76")?;
-    /*
-    DOESNT WORK!!
-
-    sleep!(5000);
-    info!("change clock ip");
-    player.change_clock_address("127.0.0.1")?;
-
-    sleep!(10000);
-    info!("change server address");
-    player.change_server_address("224.1.1.1")?;
-    */
-    info!("normal playback...");
-    //sleep!(10000);
     
-    /*if let Err(e) = player.change_output("autoaudiosink", None) {
-        warn!("failed to change output");
-    }*/
-    //player.start();
-
     main_loop.run();
 
     Ok(())

@@ -67,6 +67,8 @@ pub struct BroadcastInner {
     running_time: RwLock<gst::ClockTime>,
     current_spot: RwLock<Option<spots::Item>>,
 
+    net_clock: gst_net::NetTimeProvider,
+
     rate: Option<i32>,
 
     scheduler: SchedulerState,
@@ -108,6 +110,8 @@ impl Broadcast {
         server_ip: &str, 
         tcp_port: i32,
         rate: i32,
+        clock_port: i32,
+        broadcast_ip: Option<String>,
     ) -> Result<
         Self,
         anyhow::Error,
@@ -138,12 +142,12 @@ impl Broadcast {
         let pipeline = gst::Pipeline::new(None);
         
         // setup clock for synchronization
-        /*
+        
         let clock = gst::SystemClock::obtain();
-        let clock_provider = gst_net::NetTimeProvider::new(&clock, None, clock_port);
-        clock.set_property("clock-type", &gst::ClockType::Realtime)?;
+        let net_clock = gst_net::NetTimeProvider::new(&clock, None, clock_port);
+        clock.set_property("clock-type", &gst::ClockType::Realtime);
         pipeline.use_clock(Some(&clock));
-        */
+        
 
 
         // setup audiomixer for broadcast schedule notifications or advertising
@@ -170,16 +174,7 @@ impl Broadcast {
         let volumecontroller_mainmixer_spots = volume::Control::new();
 
 
-        let tcp_output = make_element("tcpserversink", Some("tcp_output"))?;
-        tcp_output.try_set_property("host", &server_ip)?;
-        tcp_output.try_set_property("port", &tcp_port)?;
-        tcp_output.try_set_property("sync", &true)?;
-        tcp_output.try_set_property("async", &false)?;
-
-        pipeline.add(&tcp_output)?;
-
-        // output of mainmixer goes to input of tcp_output
-        debug!("link mainmixer src with tcp_output sink");
+        
 
         // global resample
         let mainresampler = make_element("audioresample", Some("mainresampler"))?;
@@ -195,7 +190,34 @@ impl Broadcast {
 
         mainmixer.link_pads(Some("src"), &mainresampler, Some("sink"))?;
         mainresampler.link_pads(Some("src"), &maincapfilter, Some("sink"))?;
-        maincapfilter.link_pads(Some("src"), &tcp_output, Some("sink"))?;
+
+
+
+        // here we change tcp_output to rtpbin
+        //let tcp_output = make_element("tcpserversink", Some("tcp_output"))?;
+        //tcp_output.try_set_property("host", &server_ip)?;
+        //tcp_output.try_set_property("port", &tcp_port)?;
+        //tcp_output.try_set_property("sync", &true)?;
+        //tcp_output.try_set_property("async", &false)?;
+
+        let network_bin = network::create_bin(
+            tcp_port + 3, // rtcp_receiver_port
+            tcp_port + 2, // rtcp_send_port
+            tcp_port,     // rtp_send_port
+            &broadcast_ip.unwrap_or(server_ip.to_string()),      // server_address
+            None)?;
+
+        let network_element: gst::Element = network_bin.upcast();
+        //pipeline.add(&tcp_output);
+        pipeline.add(&network_element)?;
+
+        // output of mainmixer goes to input of tcp_output
+        debug!("link mainmixer src with tcp_output sink");
+        //maincapfilter.link_pads(Some("src"), &tcp_output, Some("sink"))?;
+        maincapfilter.link_pads(Some("src"), &network_element, Some("sink")).expect("error on linking maincapfilter to network_bin");
+
+
+
 
         let bus = pipeline.bus().expect("Pipeline without bus should never happen");
         let _cmd_tx = commands_tx.clone();
@@ -214,6 +236,8 @@ impl Broadcast {
             scheduler: SchedulerState::default(),
 
             volumecontroller_mainmixer_spots,
+
+            net_clock,
 
             running_time: RwLock::new(gst::ClockTime::ZERO),
             current_spot: RwLock::new(None),

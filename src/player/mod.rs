@@ -17,7 +17,7 @@ use crate::sleep_ms;
 /// Default latency for Playback
 const LATENCY:i32 = 900;
 
-
+const DEFAULT_AUDIO_RATE:i32 = 44100;
 
 
 /// Simple Playback Client for Playback RTP Server Stream
@@ -27,6 +27,7 @@ pub struct PlaybackClient {
     convert: gst::Element,
     clock: gst_net::NetClientClock,
     clock_bus: gst::Bus,
+    audio_rate: i32,
 }
 
 
@@ -45,6 +46,7 @@ impl PlaybackClient {
         rtcp_recv_port: i32,
         rtcp_send_port: i32,
         clock_port: i32,
+        audio_rate: Option<i32>,
         latency: Option<i32>,
         multicast_interface: Option<String>,
         audio_device: Option<String>,
@@ -93,10 +95,15 @@ impl PlaybackClient {
                         err.debug()
                     );
 
-                    // currently we need to panic here.
-                    // the program who use this lib, would then automatically restart.
-                    // the main problem is that the pipeline stops streaming audio over rtp if any element got an error, also if we restart the pipeline (meaning: set state to stopped, and the to play)
-                    panic!("got an error, quit here");
+                    let src = match err.src().and_then(|s| s.downcast::<gst::Element>().ok()) {
+                        None => {
+                            warn!("could not handle error cause no element found");
+                            return glib::Continue(true);
+                        },
+                        Some(src) => src,
+                    };
+
+                    warn!("receive an error from {:?}", src.name());
                     
                 }
                 /*MessageView::Buffering(buffering) => {
@@ -136,6 +143,7 @@ impl PlaybackClient {
                 convert,
                 output,
                 clock_bus,
+                audio_rate: audio_rate.unwrap_or(DEFAULT_AUDIO_RATE)
             }
         )
 

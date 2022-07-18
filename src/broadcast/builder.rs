@@ -6,7 +6,8 @@ pub struct Builder {
     server_ip: Option<String>, 
     tcp_port: Option<i32>,
     rate: Option<i32>,
-
+    broadcast_ip: Option<String>,
+    clock_port: Option<i32>,
     /*rtp_sender_port:  Option<i32>, 
     rtcp_sender_port: Option<i32>, 
     rtcp_receive_port: Option<i32>, 
@@ -74,15 +75,16 @@ impl Builder {
         self
     }
 
+    */
     pub fn set_clock_port(mut self, port: i32) -> Self {
         self.clock_port = Some(port);
         self
     }
 
-    pub fn set_multicast_interface(mut self, interf: &str) -> Self {
-        self.multicast_interface = Some(interf.to_string());
+    pub fn set_broadcast_ip(mut self, bip: &str) -> Self {
+        self.broadcast_ip = Some(bip.to_string());
         self
-    }*/
+    }
 
     /// # build the server
     pub fn build_server(&self) -> Result<super::Broadcast, anyhow::Error> {
@@ -92,6 +94,8 @@ impl Builder {
             &ip.unwrap_or("127.0.0.1".to_string()),
             self.tcp_port.unwrap_or(3333),
             self.rate.unwrap_or(44100),
+            self.clock_port.unwrap_or(8555),
+            self.broadcast_ip.clone(),
             /*self.rtp_sender_port.unwrap_or_default(),
             self.rtcp_sender_port.unwrap_or_default(),
             self.rtcp_receive_port.unwrap_or_default(),

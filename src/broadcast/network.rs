@@ -2,7 +2,7 @@
 use gst::prelude::*;
 use crate::helpers::*;
 
-use log::{debug};
+use log::{debug, info};
 
 /// Returns a gstreamer bin with all required elements for RTP Streaming
 ///
@@ -29,18 +29,29 @@ pub fn create_bin(
 ) -> Result<gst::Bin, anyhow::Error,> {
 
     debug!("setup gstbin for RTP Stream Networking");
+
+    info!("rtcp_receiver_port: {} rtcp_send_port: {} rtp_send_port: {} server_address: {} multicast_interface: {}", 
+        rtcp_receiver_port, 
+        rtcp_send_port,
+        rtp_send_port,
+        server_address,
+        multicast_interface.as_ref().unwrap_or(&"NONE".to_string()),
+    );
+
     let bin = gst::Bin::new(Some("rtpbinbin"));
 
     // filter and payloader
-    let capsfilter = make_element("capsfilter", None)?;
+    //let capsfilter = make_element("capsfilter", None)?;
     let payloader = make_element("rtpL24pay", Some("pay0"))?;
-    bin.add_many(&[&capsfilter, &payloader])?;
-    let caps = gst::Caps::builder("audio/x-raw")
-        //.field("rate", &48000i32)
-        .field("rate", &44100i32)
-        .build();
-    capsfilter.try_set_property("caps", &caps).unwrap();  
-    gst::Element::link_many(&[&capsfilter, &payloader])?;
+    bin.add(&payloader)?;
+    
+    //bin.add_many(&[&capsfilter, &payloader])?;
+
+    //let caps = gst::Caps::builder("audio/x-raw")
+    //    .field("rate", &48000i32)
+    //    .build();
+    //capsfilter.try_set_property("caps", &caps).unwrap();  
+    //gst::Element::link_many(&[&capsfilter, &payloader])?;
 
     // network and transport
     let rtpbin        = make_element("rtpbin", None)?;
@@ -63,21 +74,15 @@ pub fn create_bin(
     // required?
     rtp_udp_sink.try_set_property("sync", &true)?;
     rtp_udp_sink.try_set_property("async", &false)?;
-    
 
-    debug!("RTCP SEND PORT: {}", rtcp_send_port);
     // set rtcp ip and port (disable async and sync)
     rtcp_udp_sink.try_set_property("host", server_address)?;
     rtcp_udp_sink.try_set_property("port", rtcp_send_port)?;
     rtcp_udp_sink.try_set_property("async", &false)?; 
     rtcp_udp_sink.try_set_property("sync", &false)?;
 
-
-    
-    
     //multicast-iface=enp5s0
 
-    debug!("RTCP RECEIVE PORT: {}", rtcp_receiver_port);
     rtcp_udp_src.try_set_property("address", server_address)?;
     rtcp_udp_src.try_set_property("port", rtcp_receiver_port)?;
     //rtcp_udp_sink.try_set_property("async", &true)?; 
@@ -100,7 +105,7 @@ pub fn create_bin(
         rtcp_udp_src.try_set_property("multicast-iface", &multicast_interface)?;
     }
 
-    let ghost_pad = gst::GhostPad::with_target(Some("sink"), &capsfilter.static_pad("sink").unwrap())?;
+    let ghost_pad = gst::GhostPad::with_target(Some("sink"), &payloader.static_pad("sink").unwrap())?;
     bin.add_pad(&ghost_pad)?;
 
     Ok(bin)
