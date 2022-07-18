@@ -1,7 +1,11 @@
 
 
 use std::io::{copy, Cursor};
+
 use reqwest;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+
 use std::fs::File;
 use std::path::Path;
 use async_std::task;
@@ -33,9 +37,12 @@ async fn download_file ( file: parser::File, counter: u32) -> Result<parser::Fil
 
     info!("want to download {} -> {}", file.uri.clone(), local_path.clone().display());
 
-    
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(10);
+    let client = ClientBuilder::new(reqwest::Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build();
 
-    match reqwest::get(file.uri.clone()).await {
+    match client.get(file.uri.clone()).send().await {
         Ok(res) => {
             match res.bytes().await {
                 Ok(b) => {
@@ -88,7 +95,10 @@ pub fn download_files(files: Vec<parser::File>, ready_sender: Sender<Vec<parser:
 
         });
 
+        
+
         info!("all files downloaded: {:#?}", res);
+        
 
         let _ = ready_sender.send(res.unwrap());
     });

@@ -27,6 +27,9 @@ quick-xml = { version = "0.23", features = [ "serialize" ] }
 chrono = { version = "0.4", features = [ "serde" ] }
 
 reqwest = { version = "0.11"}
+reqwest-middleware = { version = "0.1.6" }
+reqwest-retry = { version = "0.1.5" }
+
 async-std = {version = "1.12", features = ["attributes", "tokio1"]}
 futures = "0.3"
 
