@@ -242,11 +242,6 @@ impl Fallback {
         let mut state = self.state.lock();
         let source = state.source.clone();
         
-        // wir gehen hier davon aus das es keine source gibt
-        if source.is_some() {
-            return Err(anyhow!("cannot start new cause of: Source is not empty"));
-        }
-
         if let Some(uri) = uri {
             state.uri = Some(uri.to_string());
         }
@@ -254,6 +249,15 @@ impl Fallback {
         if state.uri.is_none() {
             return Err(anyhow!("cannot start new cause of: Uri is unset"));
         }
+
+        // wir gehen hier davon aus das es keine source gibt
+        if source.is_some() {
+            drop(state);
+            info!("source is not empty, try restart stream");
+            return self.handle_error();
+        }
+
+        
 
         info!("add decoderbin {}", state.uri.as_ref().map(|x| &**x).unwrap());
         let source = make_element("uridecodebin", None)?;
