@@ -20,10 +20,12 @@ use crate::sleep_ms;
 
 
 use std::{
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{Arc, Weak},
 };
 
-use anyhow::bail;
+use parking_lot::{Mutex, RwLock};
+
+use anyhow::{bail, anyhow};
 use log::{debug, warn, info};
 
 // Strong reference to our broadcast server state
@@ -38,6 +40,13 @@ pub(crate) struct BroadcastWeak(Weak<BroadcastInner>);
 struct SenderCommand {
     uri: String,
     volume: f32,
+}
+
+#[derive(Debug, Default)]
+pub struct SchedulerSettings {
+    spot_volume: Option<f64>, 
+    broadcast_volume: Option<f64>, 
+    crossfade_time: Option<u64>
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +81,7 @@ pub struct BroadcastInner {
     rate: Option<i32>,
 
     scheduler: SchedulerState,
+    scheduler_settings: Mutex<SchedulerSettings>,
 }
 
 // To be able to access the App's fields directly
@@ -103,8 +113,14 @@ impl Broadcast {
     ///
     /// # Arguments
     ///
-    /// * `server_ip` - the Address where the broadcaster ist listening for incoming clients
+    /// * `server_ip` - the Address where the clock Server ist listening for incoming clients
     /// * `tcp_port` - Port where the tcpserversink ist put out the stream
+    /// * `rate` - The Audio rate defaults top 44100
+    /// * `clock_port` - the TCP Port for the Clock Server (default 8555)
+    /// * `broadcast_ip` - the IP / Adress / BroadcastIP for the streaming RTP RTCP server
+    /// * `spot_volume` - The Volume of a playing spot
+    /// * `broadcast_volume` - the Volume of the running stream while Spot is playing
+    /// * `crossfade_time` - the time while crossfading to a spot and from a spot to the stream
     ///
     pub fn new(
         server_ip: &str, 
@@ -112,6 +128,11 @@ impl Broadcast {
         rate: i32,
         clock_port: i32,
         broadcast_ip: Option<String>,
+
+        spot_volume: Option<f64>, 
+        broadcast_volume: Option<f64>, 
+        crossfade_time: Option<u64>,
+
     ) -> Result<
         Self,
         anyhow::Error,
@@ -222,6 +243,13 @@ impl Broadcast {
         let bus = pipeline.bus().expect("Pipeline without bus should never happen");
         let _cmd_tx = commands_tx.clone();
 
+        // set the spot settings
+        let scheduler_settings = SchedulerSettings {
+            spot_volume,
+            broadcast_volume,
+            crossfade_time,
+        };
+
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
@@ -234,6 +262,7 @@ impl Broadcast {
 
             fallback: fallback_helper,
             scheduler: SchedulerState::default(),
+            scheduler_settings: Mutex::new(scheduler_settings),
 
             volumecontroller_mainmixer_spots,
 
@@ -300,7 +329,7 @@ impl Broadcast {
             // look for removeable items
             let mut can_remove = false;
             {
-                let s = broadcast.current_spot.read().unwrap();
+                let s = broadcast.current_spot.read();
                 if let Some(spot) = &*s {
                     if spot.state() == spots::ItemState::Removed {
                         can_remove = true;
@@ -310,7 +339,7 @@ impl Broadcast {
             }
 
             if can_remove == true {
-                let mut s = broadcast.current_spot.write().unwrap();
+                let mut s = broadcast.current_spot.write();
                 *s = None;
             }
 
@@ -348,7 +377,7 @@ impl Broadcast {
                 let broadcast = upgrade_weak!(broadcast_clone, gst::PadProbeReturn::Pass);
                 methods::pad_helper::running_time_method(pad, info, |clock| {
                     
-                    let mut w = broadcast.running_time.write().unwrap();
+                    let mut w = broadcast.running_time.write();
                     *w = *clock;
                     drop(w);
                 })
@@ -368,6 +397,16 @@ impl Broadcast {
         Ok(())
     }
 
+
+    /// # Change the IPs of the running system 
+    ///
+    /// paused the current playback and fast switch the ips in the pipeline elements
+    /// 
+    /// ## Arguments
+    ///
+    /// * `broadcast_ip` - the IP / Broadcast / Host Adress of this server
+    /// * `clock_ip` - The IP Where the clock server should listen (can also be a broadcast IP)
+    ///
     pub fn change_ips(&self, broadcast_ip: Option<&str>, clock_ip: Option<&str>) -> Result<(), anyhow::Error> {
 
         
@@ -392,7 +431,7 @@ impl Broadcast {
         }
 
         if let Some(clock_ip) = clock_ip {
-            let mut net_clock = self.net_clock.lock().unwrap();
+            let mut net_clock = self.net_clock.lock();
             let old_ip: String = net_clock.address().unwrap().to_string();
             let port: i32 = net_clock.port();
             let clock = net_clock.clock().unwrap();
@@ -412,6 +451,27 @@ impl Broadcast {
         Ok(())
     }
 
+    /// # Change the settings of the Scheduler Spots 
+    ///
+    /// 
+    /// ## Arguments
+    ///
+    /// * `broadcast_ip` - the IP / Broadcast / Host Adress of this server
+    /// * `clock_ip` - The IP Where the clock server should listen (can also be a broadcast IP)
+    ///
+    pub fn change_scheduler_settings(&self, new_settings: SchedulerSettings) -> Result<(), anyhow::Error> {
+
+        let mut settings_guard = self.scheduler_settings.try_lock().ok_or(anyhow!("Cannot Lock Scheduler Settings Mutex"))?;
+        *settings_guard = new_settings;
+
+        Ok(())
+    }
+
+
+    /// # start
+    ///
+    /// Starts the GStreamer Pipeline by simple update state to Playing
+    /// 
     pub fn start(&self) -> Result<(), anyhow::Error> {
         self.pipeline.set_state(gst::State::Playing)?;
         
@@ -420,28 +480,45 @@ impl Broadcast {
         Ok(())
     }
 
+    /// # pause
+    ///
+    /// Pause the Gstreamer Pipeline
+    /// 
     pub fn pause(&self) -> Result<(), anyhow::Error> {
         self.pipeline.set_state(gst::State::Paused)?;
 
         Ok(())
     }
 
+    /// # stop
+    ///
+    /// Stops the Gstreamer Pipeline by set state to Null
+    /// 
     pub fn stop(&self) -> Result<(), anyhow::Error> {
         self.pipeline.set_state(gst::State::Null)?;
 
         Ok(())
     }
 
+    /// # play
+    ///
+    /// Play a Stream by uri 
+    /// Use the Fallback Bin to handle errors end try to restart without interrupting anything
+    /// 
     pub fn play(&self, uri: &str) -> Result<(), anyhow::Error> {
         info!("start playing: {}", uri);
         self.fallback.start(Some(uri))?;
         Ok(())
     }
 
+    /// # set_scheduler
+    ///
+    /// Setup a Scheduler / stop the old one 
+    /// 
     pub fn set_scheduler(&self, scheduler: crate::Scheduler) {
         let state = &self.scheduler;
 
-        let mut run_id = state.run_id.lock().unwrap();
+        let mut run_id = state.run_id.lock();
 
         if let Some(id) = run_id.take() {
             id.remove();
@@ -450,7 +527,7 @@ impl Broadcast {
 
         drop(run_id);
 
-        let mut scheduler_guard = state.scheduler.lock().unwrap();
+        let mut scheduler_guard = state.scheduler.lock();
         *scheduler_guard = Some(scheduler);
         drop(scheduler_guard);
 
@@ -458,20 +535,28 @@ impl Broadcast {
 
     }
 
+
     fn spot_runner(&self) {
         //let self_weak = self.downgrade();
         let broadcast_clone = self.downgrade();
         let id = glib::timeout_add(std::time::Duration::from_millis(5000), move || {
             let broadcast = upgrade_weak!(broadcast_clone, Continue(true));
 
-            let mut scheduler_guard = broadcast.scheduler.scheduler.lock().unwrap();
+            let mut scheduler_guard = broadcast.scheduler.scheduler.lock();
             let deref_scheduler = scheduler_guard.take();
             if let Some(mut scheduler) = deref_scheduler {
                 if !broadcast.spot_is_running() {
                     if let Ok(spot) = scheduler.next(Local::now()) {
-                        if let Err(e) = broadcast.play_spot(&spot.uri, Some(0.8)) {
+                        let settings = broadcast.scheduler_settings.lock();
+                        if let Err(e) = broadcast.play_spot(
+                            &spot.uri, 
+                            settings.spot_volume, 
+                            settings.broadcast_volume, 
+                            settings.crossfade_time
+                        ) {
                             warn!("error on play next spot... {:?}", e);
                         }
+                        drop(settings);
                     }
                 }
                 *scheduler_guard = Some(scheduler);
@@ -484,13 +569,13 @@ impl Broadcast {
             Continue(true)
         });
 
-        let mut run_id = self.scheduler.run_id.lock().unwrap();
+        let mut run_id = self.scheduler.run_id.lock();
         *run_id = Some(id);
         drop(run_id);
     }
 
     fn spot_is_running(&self) -> bool {
-        let s = self.current_spot.read().unwrap();
+        let s = self.current_spot.read();
 
         if let Some(spot) = &*s {
             if spot.state() != spots::ItemState::Removed && spot.state() != spots::ItemState::Eos {
@@ -502,16 +587,20 @@ impl Broadcast {
     }
 
     fn end_of_spot(&self, queue_size: u64) {
-        let start_time = self.running_time.read().unwrap();
+        let start_time = self.running_time.read();
         let c = start_time.clone();
         drop(start_time);
-        self.volumecontroller_mainmixer_spots.set_value(crate::MIN_VOLUME_BROADCAST, 1.0, gst::ClockTime::from_nseconds(queue_size), c);
+        self.volumecontroller_mainmixer_spots.set_value(None, 1.0, gst::ClockTime::from_nseconds(queue_size), c);
     }
 
     // play a spot
-    fn play_spot(&self, uri: &str, spot_volume: Option<f64>) -> Result<(), anyhow::Error> {
+    fn play_spot(&self, uri: &str, spot_volume: Option<f64>, broadcast_volume: Option<f64>, crossfade_time: Option<u64>) -> Result<(), anyhow::Error> {
 
         info!("play a spot {}", uri);
+
+        let spot_volume = spot_volume.unwrap_or(crate::MAX_VOLUME_SPOT);
+        let broadcast_volume = broadcast_volume.unwrap_or(crate::MIN_VOLUME_BROADCAST);
+        let crossfade_time = crossfade_time.unwrap_or(crate::CROSSFADE_TIME_MS);
 
         let mixer = &self.mainmixer;
         
@@ -519,15 +608,20 @@ impl Broadcast {
         let item = self::spots::Item::new(uri, broadcast_clone, self.rate)?;
         self.activate_item(&item, &mixer)?;
         
-        let start_time = self.running_time.read().unwrap();
-        warn!("what is the current running time? {:?}", start_time);
+        let start_time = self.running_time.read();
+
         let c = start_time.clone();
         drop(start_time);
 
-        let crossfade_time_as_clock = crate::CROSSFADE_TIME_MS * gst::ClockTime::MSECOND;
+        let crossfade_time_as_clock = crossfade_time * gst::ClockTime::MSECOND;
 
-        let _ = item.set_volume(spot_volume.unwrap_or(crate::MAX_VOLUME_SPOT));
-        self.volumecontroller_mainmixer_spots.set_value(1.0, crate::MIN_VOLUME_BROADCAST, crossfade_time_as_clock, c);
+        let _ = item.set_volume(spot_volume);
+        self.volumecontroller_mainmixer_spots.set_value(
+            Some(1.0),
+            broadcast_volume, 
+            crossfade_time_as_clock, 
+            c
+        );
         
         let s = c.nseconds() as i64;
 
@@ -535,7 +629,7 @@ impl Broadcast {
         item.set_offset(s - (crossfade_time_as_clock.nseconds() as i64) / 2);
 
         // current spot needs to resist in memory for accessible by pad events
-        let mut w = self.current_spot.write().unwrap();
+        let mut w = self.current_spot.write();
         *w = Some(item);
         drop(w);
 

@@ -4,11 +4,19 @@
 ///
 
 use gst_controller::prelude::*;
-use anyhow;
+use parking_lot::{Mutex};
+use anyhow::{Result};
+
+#[derive(Debug)]
+struct PadProperty {
+    pad: gst::Pad, 
+    property: String
+}
 
 #[derive(Debug)]
 pub struct Control{
     source: gst_controller::InterpolationControlSource,
+    padprop: Mutex<Option<PadProperty>>,
 }
 
 
@@ -23,6 +31,7 @@ impl Control {
 
         Control {
             source: controller,
+            padprop: Mutex::new(None)
         }
     }
     
@@ -32,9 +41,19 @@ impl Control {
     ///
     /// - `pad` the pad which we want to control
     /// - `property` the property which we want to manipulate
-    pub fn attach_to(&self, pad: &gst::Pad, property: &str ) -> Result<(), anyhow::Error> {
+    pub fn attach_to(&self, pad: &gst::Pad, property: &str ) -> Result<()> {
         let dcb = gst_controller::DirectControlBinding::new_absolute(pad, property, &self.source);
         pad.add_control_binding(&dcb)?;
+
+        let mut a = self.padprop.lock();
+        *a = Some(PadProperty{
+            pad: pad.clone(),
+            property: property.to_string(),
+        });
+        drop(a);
+        
+        
+
         Ok(())
     }
    
@@ -46,9 +65,15 @@ impl Control {
     /// - `to`an float 64 value
     /// - `duration` the duration as _gst::ClockTime_ where the value gets from _from_ to _to_
     /// - `current_time` is the current running time of the pipeline / stream / element / mixer...
-    pub fn set_value(&self, from: f64, to: f64, duration: gst::ClockTime, current_time: gst::ClockTime) {
+    pub fn set_value(&self, from: Option<f64>, to: f64, duration: gst::ClockTime, current_time: gst::ClockTime) {
         let a = self.source.upcast_ref::<gst_controller::TimedValueControlSource>();
-        a.set(current_time, from);
+        
+        let prop_guard = self.padprop.lock();
+        
+        let prop = prop_guard.as_ref().unwrap();
+        let current_value:f64 = prop.pad.property(&prop.property);
+
+        a.set(current_time, from.unwrap_or(current_value));
         a.set(current_time + duration, to);
     }
 }

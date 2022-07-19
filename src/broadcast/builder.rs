@@ -8,11 +8,10 @@ pub struct Builder {
     rate: Option<i32>,
     broadcast_ip: Option<String>,
     clock_port: Option<i32>,
-    /*rtp_sender_port:  Option<i32>, 
-    rtcp_sender_port: Option<i32>, 
-    rtcp_receive_port: Option<i32>, 
-    clock_port: Option<i32>, 
-    multicast_interface: Option<String>,*/
+    
+    spot_volume: Option<f64>, 
+    broadcast_volume: Option<f64>, 
+    crossfade_time: Option<u64>,
 }
 
 
@@ -20,19 +19,9 @@ impl Builder {
 
     /// creates a Builder with default Values
     /// 
-    /// - `clock_port` 8555
-    /// - `rtp_sender_port` 5000
-    /// - `rtcp_sender_port` 5001
-    /// - `rtcp_receiver_port` 5007
     pub fn new() -> Builder {
         Builder {
             ..Default::default()
-
-            /*clock_port: Some(8555),
-            rtp_sender_port: Some(5000),
-            rtcp_sender_port: Some(5001),
-            rtcp_receive_port: Some(5007),
-            ..Default::default()*/
         }
     }
 
@@ -53,29 +42,6 @@ impl Builder {
         self
     }
 
-    /*/// set the rtp send port (per default 5000)
-    pub fn set_rtp_sender_port(mut self, port: i32) -> Self {
-        self.rtp_sender_port = Some(port);
-        self
-    }
-
-    /// set the rtcp send port (per default 5001) 
-    /// 
-    /// which is the control port for RTP which is send to all clients
-    pub fn set_rtcp_sender_port(mut self, port: i32) -> Self {
-        self.rtcp_sender_port = Some(port);
-        self
-    }
-
-    /// set the rtcp receive port (per default 5007) 
-    /// 
-    /// which is the control port for RTP which received from clients
-    pub fn set_rtcp_receive_port(mut self, port: i32) -> Self {
-        self.rtcp_receive_port = Some(port);
-        self
-    }
-
-    */
     pub fn set_clock_port(mut self, port: i32) -> Self {
         self.clock_port = Some(port);
         self
@@ -83,6 +49,22 @@ impl Builder {
 
     pub fn set_broadcast_ip(mut self, bip: &str) -> Self {
         self.broadcast_ip = Some(bip.to_string());
+        self
+    }
+
+    pub fn set_spot_volume(mut self, volume: f64) -> Self {
+        self.spot_volume = Some(volume);
+        self
+    }
+
+
+    pub fn set_broadcast_volume(mut self, volume: f64) -> Self {
+        self.broadcast_volume = Some(volume);
+        self
+    }
+
+    pub fn set_crossfade_time(mut self, duration: std::time::Duration) -> Self {
+        self.crossfade_time = Some(duration.as_millis() as u64);
         self
     }
 
@@ -96,11 +78,9 @@ impl Builder {
             self.rate.unwrap_or(44100),
             self.clock_port.unwrap_or(8555),
             self.broadcast_ip.clone(),
-            /*self.rtp_sender_port.unwrap_or_default(),
-            self.rtcp_sender_port.unwrap_or_default(),
-            self.rtcp_receive_port.unwrap_or_default(),
-            self.clock_port.unwrap_or_default(),
-            self.multicast_interface.clone(),*/
+            self.spot_volume,
+            self.broadcast_volume,
+            self.crossfade_time,
         )
     }
 }
