@@ -19,6 +19,7 @@ use log::{debug, info};
 /// // You can have rust code between fences inside the comments
 /// // If you pass --test to `rustdoc`, it will even test it for you!
 /// ```
+///
 #[allow(dead_code)]
 pub fn create_bin( 
     rtcp_receiver_port: i32, 
@@ -54,7 +55,14 @@ pub fn create_bin(
     //gst::Element::link_many(&[&capsfilter, &payloader])?;
 
     // network and transport
-    let rtpbin        = make_element("rtpbin", None)?;
+    let rtpbin = make_element("rtpbin", None)?;
+
+
+    crate::encryption::server_encryption(&rtpbin)?;
+
+    
+
+
     let rtp_udp_sink  = make_element("udpsink",Some("network_rtp_sink"))?;
     let rtcp_udp_sink = make_element("udpsink",Some("network_rtcp_sink"))?;
     let rtcp_udp_src  = make_element("udpsrc", Some("network_rtcp_src"))?;

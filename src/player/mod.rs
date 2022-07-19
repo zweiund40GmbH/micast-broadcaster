@@ -18,6 +18,7 @@ use crate::sleep_ms;
 /// Default latency for Playback
 const LATENCY:i32 = 900;
 
+const ENCRYPTION_ENABLED:bool = true;
 const DEFAULT_AUDIO_RATE:i32 = 44100;
 
 
@@ -432,13 +433,14 @@ fn create_pipeline(
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
-    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    let mut caps = gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
 
     rtp_src.try_set_property("caps", &caps)?;
     rtp_src.try_set_property("port", rtp_port as i32)?;
     rtp_src.try_set_property("address", &server_ip)?;
 
     let rtcp_src = make_element("udpsrc", Some("rtcp_eingang"))?;
+    //rtcp_src.try_set_property("caps", &crate::encryption::simple_encryption_cap(Some(0)).unwrap())?;
     rtcp_src.try_set_property("port", rtcp_recv_port as i32)?;
     rtcp_src.try_set_property("address", &server_ip)?;
 
@@ -458,11 +460,16 @@ fn create_pipeline(
     }
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
-    rtpbin.try_set_property_from_str("buffer-mode", "synced");
+    rtpbin.try_set_property_from_str("buffer-mode", "synced")?;
     rtpbin.try_set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
-    rtpbin.try_set_property_from_str("ntp-time-source", "clock-time");
+    rtpbin.try_set_property_from_str("ntp-time-source", "clock-time")?;
     rtpbin.try_set_property("ntp-sync", &true)?;
     rtpbin.try_set_property("autoremove", &true)?;
+
+    if ENCRYPTION_ENABLED {
+        crate::encryption::client_encryption(&rtpbin)?;
+    }
+    
 
     // put all in the pipeline
     pipeline.add(&rtp_src)?;
@@ -481,7 +488,7 @@ fn create_pipeline(
 
     let sink = if let Some(device) = audio_device {
         let sink = make_element("alsasink", Some("sink"))?;
-        sink.try_set_property("device", device);
+        sink.try_set_property("device", device)?;
         sink
     } else {
         make_element("autoaudiosink", Some("sink"))?
