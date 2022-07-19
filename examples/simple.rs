@@ -27,9 +27,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .set_broadcast_ip("127.0.0.1")
         //.set_audiorate(44100 / 2)
         .set_audiorate(44100)
-        .set_spot_volume(0.3)
-        .set_broadcast_volume(0.5)
-        .set_crossfade_time(std::time::Duration::from_secs(1))
+        .set_spot_volume(Some(0.3))
+        .set_broadcast_volume(Some(0.5))
+        .set_crossfade_time(Some(std::time::Duration::from_secs(1)))
         .build_server()?;
 
     broadcaster.set_scheduler(scheduler);

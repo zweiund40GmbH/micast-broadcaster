@@ -52,19 +52,19 @@ impl Builder {
         self
     }
 
-    pub fn set_spot_volume(mut self, volume: f64) -> Self {
-        self.spot_volume = Some(volume);
+    pub fn set_spot_volume(mut self, volume: Option<f64>) -> Self {
+        self.spot_volume = volume;
         self
     }
 
 
-    pub fn set_broadcast_volume(mut self, volume: f64) -> Self {
-        self.broadcast_volume = Some(volume);
+    pub fn set_broadcast_volume(mut self, volume:  Option<f64>) -> Self {
+        self.broadcast_volume = volume;
         self
     }
 
-    pub fn set_crossfade_time(mut self, duration: std::time::Duration) -> Self {
-        self.crossfade_time = Some(duration.as_millis() as u64);
+    pub fn set_crossfade_time(mut self, duration: Option<std::time::Duration>) -> Self {
+        self.crossfade_time = duration.map_or(None, |v| Some(v.as_millis() as u64));
         self
     }
 
