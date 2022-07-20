@@ -76,6 +76,7 @@ pub struct BroadcastInner {
     running_time: RwLock<gst::ClockTime>,
     current_spot: RwLock<Option<spots::Item>>,
 
+    network_bin: gst::Element,
     net_clock: Mutex<gst_net::NetTimeProvider>,
 
     rate: Option<i32>,
@@ -267,6 +268,7 @@ impl Broadcast {
             volumecontroller_mainmixer_spots,
 
             net_clock: Mutex::new(net_clock),
+            network_bin: network_element,
 
             running_time: RwLock::new(gst::ClockTime::ZERO),
             current_spot: RwLock::new(None),
@@ -301,6 +303,26 @@ impl Broadcast {
                         Some(src) => src,
                     };
                     warn!("error comes from: {:?}", src.name());
+
+                    if src.has_as_ancestor(&broadcast.network_bin) {
+                        warn!("network communication error {:#?}", err);
+
+                        warn!("we wait 5 seconds and restart pipeline");
+                        let weak_pipeline = broadcast.pipeline.downgrade();
+                        glib::timeout_add(std::time::Duration::from_secs(5), move || {
+                            
+                            let pipeline = match weak_pipeline.upgrade() {
+                                Some(pipeline) => pipeline,
+                                None => return Continue(true),
+                            };
+                            warn!("set pipeline to null and than to playing");
+                            let _ = pipeline.set_state(gst::State::Null);
+                            sleep_ms!(500);
+                            let _ = pipeline.set_state(gst::State::Playing);
+
+                            Continue(false)
+                        });
+                    }
 
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
                         warn!("error comes from fallback");
