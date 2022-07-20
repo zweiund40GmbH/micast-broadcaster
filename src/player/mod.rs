@@ -307,6 +307,8 @@ impl PlaybackClient {
     /// * `server` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
     /// 
     pub fn change_clock_and_server(&self, clock: &str, server: &str) -> Result<(), anyhow::Error> {
+
+        info!("change_clock_and_server - stop playback");
         self.stop();
         
 
@@ -316,6 +318,8 @@ impl PlaybackClient {
         state_guard.clock = clock;
         drop(state_guard);
 
+        info!("change_clock_and_server - clock changed");
+
 
         let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
             Some(elem) => elem,
@@ -323,6 +327,8 @@ impl PlaybackClient {
                 return Err(anyhow!("rtp_sink not found"))
             }
         };
+
+        info!("change_clock_and_server - rtcp_eingang changed");
   
         let rtcp_senden = match self.pipeline.by_name("rtcp_senden"){
             Some(elem) => elem,
@@ -331,6 +337,8 @@ impl PlaybackClient {
             }
         };
 
+        info!("change_clock_and_server - rtcp_senden changed");
+
         let rtp_eingang = match self.pipeline.by_name("rtp_eingang"){
             Some(elem) => elem,
             None => { 
@@ -338,13 +346,19 @@ impl PlaybackClient {
             }
         };
 
+        info!("change_clock_and_server - rtp_eingang changed");
+
         rtcp_eingang.try_set_property( "address", server)?;
         rtcp_senden.try_set_property("host", server)?;
         rtp_eingang.try_set_property( "address", server)?;
         
         sleep_ms!(200);
+
+        info!("change_clock_and_server - now start player again");
         self.start();
         
+        info!("change_clock_and_server - started");
+
         Ok(())
     }
 
