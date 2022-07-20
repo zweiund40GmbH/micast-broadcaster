@@ -452,9 +452,11 @@ fn create_pipeline(
     rtcp_sink.try_set_property("sync", &false)?;
 
     //rtcp_sink.try_set_property("bind-address", &server_ip)?;
-    
-    let ifaces = vec![String::from("enp5s0"), String::from("wlp1s0")];
-    rtcp_sink.try_set_property("multicast-iface", &ifaces)?;
+
+    // this is in newest gstreamer version depricated.. but at least, i will try it
+    //rtcp_sink.try_set_property("force-ipv4", &true)?;
+
+    rtcp_sink.try_set_property("multicast-iface", &"enp5s0,wlp1s0")?;
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
     rtpbin.try_set_property_from_str("buffer-mode", "synced")?;
