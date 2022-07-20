@@ -106,12 +106,10 @@ pub fn create_bin(
 
     });
 
-    if let Some(multicast_interface) = multicast_interface {
-        debug!("set multicast interface {}", multicast_interface);
-        rtp_udp_sink.try_set_property("multicast-iface", &multicast_interface)?;
-        rtcp_udp_sink.try_set_property("multicast-iface", &multicast_interface)?;
-        rtcp_udp_src.try_set_property("multicast-iface", &multicast_interface)?;
-    }
+
+    let ifaces = vec![String::from("enp5s0"), String::from("wlp1s0")];
+    rtp_udp_sink.try_set_property("multicast-iface", &ifaces)?;
+    rtcp_udp_sink.try_set_property("multicast-iface", &ifaces)?;
 
     let ghost_pad = gst::GhostPad::with_target(Some("sink"), &payloader.static_pad("sink").unwrap())?;
     bin.add_pad(&ghost_pad)?;

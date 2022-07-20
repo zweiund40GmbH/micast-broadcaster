@@ -452,12 +452,9 @@ fn create_pipeline(
     rtcp_sink.try_set_property("sync", &false)?;
 
     //rtcp_sink.try_set_property("bind-address", &server_ip)?;
-
-    if let Some(multicast_interface) = multicast_interface {
-        rtp_src.try_set_property("multicast-iface", &multicast_interface)?;
-        rtcp_src.try_set_property("multicast-iface", &multicast_interface)?;
-        rtcp_sink.try_set_property("multicast-iface", &multicast_interface)?;
-    }
+    
+    let ifaces = vec![String::from("enp5s0"), String::from("wlp1s0")];
+    rtcp_sink.try_set_property("multicast-iface", &ifaces)?;
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
     rtpbin.try_set_property_from_str("buffer-mode", "synced")?;
