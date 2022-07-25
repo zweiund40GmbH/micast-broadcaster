@@ -171,6 +171,16 @@ impl Fallback {
                 debug!("ready to start stream again");
                 false
             },
+            CurState::HandleError => {
+                warn!("we are already in handleError State... what next?");
+
+                if let Some(source) = &state.source {
+                    let _ = self.bin.remove(source);
+                    state.source = None;
+                }
+
+                false
+            }
             e => {
                 return Err(anyhow!("could not handle error, state is unkown: {:?}", e))
             },
