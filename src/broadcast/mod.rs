@@ -457,39 +457,50 @@ impl Broadcast {
     ///
     pub fn change_ips(&self, broadcast_ip: Option<&str>, clock_ip: Option<&str>) -> Result<(), anyhow::Error> {
 
-        
         // rtp_udp_sink - host - network_rtp_sink
         // rtcp_udp_sink - host - network_rtcp_sink
         // rtcp_udp_src - address - network_rtcp_src
-        self.pipeline.set_state(gst::State::Paused)?;
+        
 
 
         if let Some(broadcast_ip) = broadcast_ip {
+
             let rtp_udp_sink = self.pipeline.by_name("network_rtp_sink").unwrap();
             let old_ip: String = rtp_udp_sink.property("host");
+            if broadcast_ip != old_ip {
+                self.pipeline.set_state(gst::State::Paused)?;
 
-            info!("change broadcast ip from {} to {}", old_ip, broadcast_ip);
+                info!("change broadcast ip from {} to {}", old_ip, broadcast_ip);
 
-            let rtcp_udp_sink = self.pipeline.by_name("network_rtcp_sink").unwrap();
-            let rtcp_udp_src = self.pipeline.by_name("network_rtcp_src").unwrap();
-    
-            rtp_udp_sink.try_set_property("host", broadcast_ip)?;
-            rtcp_udp_sink.try_set_property("host", broadcast_ip)?;
-            rtcp_udp_src.try_set_property("address", broadcast_ip)?;
+                let rtcp_udp_sink = self.pipeline.by_name("network_rtcp_sink").unwrap();
+                let rtcp_udp_src = self.pipeline.by_name("network_rtcp_src").unwrap();
+        
+                rtp_udp_sink.try_set_property("host", broadcast_ip)?;
+                rtcp_udp_sink.try_set_property("host", broadcast_ip)?;
+                rtcp_udp_src.try_set_property("address", broadcast_ip)?;                
+            }
+            
+
         }
 
         if let Some(clock_ip) = clock_ip {
             let mut net_clock = self.net_clock.lock();
             let old_ip: String = net_clock.address().unwrap().to_string();
-            let port: i32 = net_clock.port();
-            let clock = net_clock.clock().unwrap();
-            
-            info!("change clock ip from {} to {}", old_ip, clock_ip);
+            if clock_ip != old_ip {
+                self.pipeline.set_state(gst::State::Paused)?;
 
-            let new_net_clock = gst_net::NetTimeProvider::new(&clock, Some(clock_ip), port);
-            *net_clock = new_net_clock;
-            self.pipeline.use_clock(Some(&clock));
-            drop(net_clock);
+                
+
+                let port: i32 = net_clock.port();
+                let clock = net_clock.clock().unwrap();
+                
+                info!("change clock ip from {} to {}", old_ip, clock_ip);
+
+                let new_net_clock = gst_net::NetTimeProvider::new(&clock, Some(clock_ip), port);
+                *net_clock = new_net_clock;
+                self.pipeline.use_clock(Some(&clock));
+                drop(net_clock);
+            }
         }
         
        

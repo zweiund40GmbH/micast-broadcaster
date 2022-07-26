@@ -28,6 +28,10 @@ struct State {
     audio_in_src: gst::Pad,
     recv_rtp_src: Option<gst::Pad>,
     clock: gst_net::NetClientClock,
+    current_output_device: String,
+    current_output_element: String,
+    current_clock_ip: String,
+    current_server_ip: String,
     //clock_bus: gst::Bus,
 }
 
@@ -104,7 +108,7 @@ impl PlaybackClient {
             rtcp_send_port,
             latency,
             multicast_interface,
-            audio_device,
+            audio_device.clone(),
         )?;
 
         //let (clock, clock_bus) = create_net_clock(&pipeline, clock_ip, clock_port)?;
@@ -122,6 +126,10 @@ impl PlaybackClient {
             audio_in_src,
             recv_rtp_src: None,
             clock,
+            current_output_element: "alsasink".to_string(),
+            current_output_device: audio_device.unwrap_or("".to_string()),
+            current_clock_ip: clock_ip.to_string(),
+            current_server_ip: server_ip.to_string(),
             //clock_bus,
         };
 
@@ -161,11 +169,8 @@ impl PlaybackClient {
                 info!("link newley created pad {} to rtpdepayload sink", pad.name());
                 pad.link(&decoder_sink).expect("link of rtpbin pad to rtpdepayload sink should work");
     
-                
                 pbc.pipeline.set_start_time(gst::ClockTime::NONE);
     
-                
-                
             }
 
         });
@@ -307,18 +312,21 @@ impl PlaybackClient {
     /// * `server` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
     /// 
     pub fn change_clock_and_server(&self, clock: &str, server: &str) -> Result<(), anyhow::Error> {
+ 
+        let inner_state = self.state.lock();
+        if &inner_state.current_clock_ip == clock && &inner_state.current_server_ip == server {
+            info!("do not change ip, cause ip is not changed {} {}", clock, server);
+            return Ok(())
+        }
+        drop(inner_state);
 
         info!("change_clock_and_server - stop playback");
         self.stop();
-        
-
         
         let mut state_guard = self.state.lock();
         let clock = create_net_clock(&self.pipeline, clock, self.clock_port)?;
         state_guard.clock = clock;
         drop(state_guard);
-
-        info!("change_clock_and_server - clock changed");
 
 
         let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
@@ -328,16 +336,12 @@ impl PlaybackClient {
             }
         };
 
-        info!("change_clock_and_server - rtcp_eingang changed");
-  
         let rtcp_senden = match self.pipeline.by_name("rtcp_senden"){
             Some(elem) => elem,
             None => { 
                 return Err(anyhow!("rtcp_sink not found"))
             }
         };
-
-        info!("change_clock_and_server - rtcp_senden changed");
 
         let rtp_eingang = match self.pipeline.by_name("rtp_eingang"){
             Some(elem) => elem,
@@ -391,7 +395,18 @@ impl PlaybackClient {
 
 
     pub fn change_output(&self, element: &str, device: Option<&str>) -> Result<(), anyhow::Error> {
-        
+        let inner_state = self.state.lock();
+        if 
+            &inner_state.current_output_device == device.unwrap_or("alsasink") && 
+            &inner_state.current_output_element == element  
+        {
+            info!("device not changed, skip change_output {} {:?}", element, device);
+            return Ok(()); 
+        }
+
+        drop(inner_state);
+
+
         self.stop();
 
         info!("change_output, creates new element {}, with : {:?}", element, device);
