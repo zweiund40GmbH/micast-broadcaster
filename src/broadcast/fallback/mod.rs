@@ -216,29 +216,29 @@ impl Fallback {
 
         let state = self.state.lock();
 
-        if state.source.is_none() {
-            return Err(anyhow!("cannot remove stream cause Stream does not exists"));
+        if let Some(source) = state.source.as_ref() {
+            
+            let sourcepad = state.source_pad.clone();
+            if sourcepad.is_none() {
+                return Err(anyhow!("cannot remove stream cause Sourcepad is empty"));
+            }
+ 
+            // we crate a probe for triggering an EOS and call this callback
+            let sourcepad = sourcepad.unwrap();
+            let self_downgrade = self.downgrade();
+            sourcepad.add_probe(gst::PadProbeType::BLOCK_DOWNSTREAM, move |pad, probe_info| {
+                let fallback = upgrade_weak!(self_downgrade, gst::PadProbeReturn::Ok);
+                fallback.pad_eos_cb(pad, probe_info).map_err(|e| {
+                    warn!("pad_eos_cb triggered an error: {}", e);
+                    gst::PadProbeReturn::Ok
+                }).unwrap()
+            });
+        } else {
+            info!("did not remove source (add_probe BLOCK_STREAM to sourcepad), cause source is empty");
         }
-
-        let sourcepad = state.source_pad.clone();
-        if sourcepad.is_none() {
-            return Err(anyhow!("cannot remove stream cause Sourcepad is empty"));
-        }
-
+        
         let convertsink = state.converter_bin.static_pad("sink").unwrap();
-
         drop(state);
-
-        // we crate a probe for triggering an EOS and call this callback
-        let sourcepad = sourcepad.unwrap();
-        let self_downgrade = self.downgrade();
-        sourcepad.add_probe(gst::PadProbeType::BLOCK_DOWNSTREAM, move |pad, probe_info| {
-            let fallback = upgrade_weak!(self_downgrade, gst::PadProbeReturn::Ok);
-            fallback.pad_eos_cb(pad, probe_info).map_err(|e| {
-                warn!("pad_eos_cb triggered an error: {}", e);
-                gst::PadProbeReturn::Ok
-            }).unwrap()
-        });
 
 
         // after creating the probe we send eos
