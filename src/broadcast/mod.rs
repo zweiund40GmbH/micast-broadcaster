@@ -382,6 +382,34 @@ impl Broadcast {
         });
 
 
+        let broadcast_down = broadcast.downgrade();
+        glib::timeout_add(std::time::Duration::from_secs(20), move || {
+                                
+            let broadcast = match broadcast_down.upgrade() {
+                Some(broadcast) => broadcast,
+                None => return Continue(true),
+            };
+            //warn!("set pipeline to null and than to playing");
+            
+            let _ = broadcast.play("https://wdr-1live-live.sslcast.addradio.de/wdr/1live/live/mp3/128/stream.mp3");
+
+            let broadcast_down = broadcast.downgrade();
+            glib::timeout_add(std::time::Duration::from_secs(20), move || {
+                                    
+                let broadcast = match broadcast_down.upgrade() {
+                    Some(broadcast) => broadcast,
+                    None => return Continue(true),
+                };
+                //warn!("set pipeline to null and than to playing");
+                
+                let _ = broadcast.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
+        
+                Continue(false)
+            });
+            Continue(false)
+        });
+
+
         Ok(
             broadcast
         )

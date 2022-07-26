@@ -262,15 +262,23 @@ impl Fallback {
 
         // wir gehen hier davon aus das es keine source gibt
         if source.is_some() {
-            drop(state);
+            
             info!("source is not empty, try restart stream");
+
+            if let Some(source) = &state.source {
+                let _ = self.bin.remove(source);
+                state.source = None;
+            }
+            drop(state);
             return self.handle_error();
         }
 
         
 
-        info!("add decoderbin {}", state.uri.as_ref().map(|x| &**x).unwrap());
+        
         let source = make_element("uridecodebin", None)?;
+        info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
+
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
 
         //source.connect("source-setup", false, |r| {
@@ -283,8 +291,17 @@ impl Fallback {
         let s = self.clone();
         let self_downgrade = s.downgrade();
 
-        source.connect_pad_added(move |_, pad| {
+
+
+        source.connect_pad_added(move |src, pad| {
             let fb = upgrade_weak!(self_downgrade);
+            sleep_ms!(200);
+            warn!("Source decoder name is: {:?}", src.name());
+            if None == src.parent() {
+                warn!(" source is not connected... skip this part");
+                return
+            }
+            warn!("source_connect_pad_added_parent: {:#?}", src.parent().unwrap().name());
             if let Err(e) = fb.pad_added_cb(pad) {
                 warn!("error on add pad from decoder: {}", e);
 
@@ -302,6 +319,7 @@ impl Fallback {
 
 
         self.bin.add(&source)?;
+        sleep_ms!(500);
         
         let cloned_source = source.clone();
         state.pl_state = CurState::WaitForDecoderSrcPad;
@@ -310,6 +328,7 @@ impl Fallback {
         drop(state);
 
         // if running time...
+        sleep_ms!(500);
         cloned_source.set_state(gst::State::Playing)?;
         Ok(())
     }
@@ -389,6 +408,12 @@ impl Fallback {
     fn pad_added_cb(&self, pad: &gst::Pad) -> Result<()> {
         let mut state = self.state.lock();
         let converter_sink = state.converter_bin.static_pad("sink").unwrap();
+
+        let converter_bin_parent = state.converter_bin.parent();
+        warn!("converter_bin_parent is: {:#?}", converter_bin_parent.unwrap().name());
+
+        warn!("converter sink is: {:#?}", converter_sink.name());
+        warn!("pad name is is: {:#?}", pad.name());
 
         pad.link(&converter_sink)?;
 
