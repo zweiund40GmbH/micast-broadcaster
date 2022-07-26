@@ -489,8 +489,6 @@ impl Broadcast {
             if clock_ip != old_ip {
                 self.pipeline.set_state(gst::State::Paused)?;
 
-                
-
                 let port: i32 = net_clock.port();
                 let clock = net_clock.clock().unwrap();
                 
@@ -502,8 +500,6 @@ impl Broadcast {
                 drop(net_clock);
             }
         }
-        
-       
 
         self.pipeline.set_state(gst::State::Playing)?;
 

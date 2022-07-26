@@ -328,6 +328,7 @@ impl PlaybackClient {
         state_guard.clock = clock;
         drop(state_guard);
 
+        
 
         let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
             Some(elem) => elem,
@@ -356,12 +357,20 @@ impl PlaybackClient {
         rtcp_senden.try_set_property("host", server)?;
         rtp_eingang.try_set_property( "address", server)?;
         
+
+        let mut state_guard = self.state.lock();
+        state_guard.current_server_ip = server.to_string();
+        state_guard.current_clock_ip = clock.to_string();
+        drop(state_guard);
+
+
         sleep_ms!(200);
 
         info!("change_clock_and_server - now start player again");
         self.start();
         
         info!("change_clock_and_server - started");
+
 
         Ok(())
     }
@@ -432,6 +441,8 @@ impl PlaybackClient {
         self.pipeline.add(&source)?;
         state_guard.audio_in_src.link(&source.static_pad("sink").unwrap())?;
         state_guard.source = source;
+        state_guard.current_output_device = device.unwrap_or("alsasink").to_string();
+        state_guard.current_output_element = element.to_string();
         drop(state_guard);
 
 
