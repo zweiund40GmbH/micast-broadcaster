@@ -311,11 +311,11 @@ impl PlaybackClient {
     /// * `clock` - IP Address / Hostname of the clock provider
     /// * `server` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
     /// 
-    pub fn change_clock_and_server(&self, clock: &str, server: &str) -> Result<(), anyhow::Error> {
+    pub fn change_clock_and_server(&self, clock_ip: &str, server: &str) -> Result<(), anyhow::Error> {
  
         let inner_state = self.state.lock();
-        if &inner_state.current_clock_ip == clock && &inner_state.current_server_ip == server {
-            info!("do not change ip, cause ip is not changed {} {}", clock, server);
+        if &inner_state.current_clock_ip == clock_ip && &inner_state.current_server_ip == server {
+            info!("do not change ip, cause ip is not changed {} {}", clock_ip, server);
             return Ok(())
         }
         drop(inner_state);
@@ -324,7 +324,7 @@ impl PlaybackClient {
         self.stop();
         
         let mut state_guard = self.state.lock();
-        let clock = create_net_clock(&self.pipeline, clock, self.clock_port)?;
+        let clock = create_net_clock(&self.pipeline, clock_ip, self.clock_port)?;
         state_guard.clock = clock;
         drop(state_guard);
 
@@ -360,7 +360,7 @@ impl PlaybackClient {
 
         let mut state_guard = self.state.lock();
         state_guard.current_server_ip = server.to_string();
-        state_guard.current_clock_ip = clock.to_string();
+        state_guard.current_clock_ip = clock_ip.to_string();
         drop(state_guard);
 
 
