@@ -148,7 +148,12 @@ impl Fallback {
             CurState::PlaySource => {
                 warn!("handling error while in playing mode");
                 
-                true
+                if state.source.is_none() {
+                    info!("source is non, so we directly want to start playback again");
+                    false
+                } else {
+                    true
+                }
             },
 
             CurState::WaitForDecoderSrcPad => {
