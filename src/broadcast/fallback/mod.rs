@@ -168,7 +168,7 @@ impl Fallback {
                 false
             },
             CurState::Retry => {
-                debug!("ready to start stream again");
+                info!("ready to start stream again");
                 false
             },
             CurState::HandleError => {
@@ -192,12 +192,12 @@ impl Fallback {
         //let self_weak = self.downgrade();
 
         if stop_before_start {
-            debug!("stop playback before restart");
+            info!("error_handling: stop playback before restart");
             if let Err(e) = self.stop_playback() {
                 warn!("got a problem while stop playback on error handling mode : {}", e);
             }
         } else {
-            debug!("we want to restart now");
+            info!("error_handling: we want to restart now");
             if let Err(e) = self.start(None) {
                 warn!("error on retry : {}", e)
             }
@@ -242,7 +242,7 @@ impl Fallback {
 
 
         // after creating the probe we send eos
-        debug!("send eos event");
+        info!("send eos event");
         convertsink.send_event(gst::event::Eos::new());
         
         Ok(())
@@ -336,7 +336,7 @@ impl Fallback {
     fn pad_eos_cb(&self, pad: &gst::Pad, info: &mut gst::PadProbeInfo) -> Result<gst::PadProbeReturn> {
         if let Some(gst::PadProbeData::Event(ref event)) = info.data {
             if event.type_() == gst::EventType::Eos {
-                debug!("we received an EOS event");
+                info!("we received an EOS event");
 
                 pad.remove_probe(info.id.take().unwrap());
                 
