@@ -355,15 +355,20 @@ impl Fallback {
                 let bin_src = state.bin_src.clone();
 
                 
-                src.unlink(&sink)?;
+                if let Err(e) = src.unlink(&sink) {
+                    warn!("want to unlink src pad from sink {:?}.unlink({:?}) but got an error: {:?}", src.name(), sink.name(), e);
+                }
 
                 if state.has_mixer_connected {
                     self.mixer.release_pad(bin_src.peer().unwrap());
                 }
                 
+                if let Err(e) = self.bin.remove(source) {
+                    warn!("want remove {:?} from Fallbackbin, but got an error: {:?}", source.name(), e);
+                }
                 self.bin.remove(source)?;
 
-                debug!("remove source and source pad");
+                info!("remove source and source pad");
                 state.has_mixer_connected = false;
                 state.source = None;
                 state.source_pad = None;
