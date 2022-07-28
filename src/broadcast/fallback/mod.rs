@@ -366,7 +366,6 @@ impl Fallback {
                 if let Err(e) = self.bin.remove(source) {
                     warn!("want remove {:?} from Fallbackbin, but got an error: {:?}", source.name(), e);
                 }
-                self.bin.remove(source)?;
 
                 info!("remove source and source pad");
                 state.has_mixer_connected = false;
