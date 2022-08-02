@@ -138,8 +138,23 @@ impl Fallback {
 
     }
 
+    pub fn triggered_error_from_bus(&self) -> Result<()> {
+        info!("triggered an error from bus");
+        let state = self.state.lock();
+        if CurState::HandleError == state.pl_state {
+            info!("triggered error from bus, but state is already in handleError mode, skipping");
+            return Ok(())
+        }
 
-    pub fn handle_error(&self) -> Result<()> {
+        drop(state);
+
+        self.handle_error()?;
+
+        Ok(())
+    }
+
+
+    fn handle_error(&self) -> Result<()> {
         let mut state = self.state.lock();
         let pl_state = state.pl_state.clone();
 
@@ -177,6 +192,7 @@ impl Fallback {
                 false
             },
             CurState::HandleError => {
+                // if handle error is called while in handleerror state
                 warn!("we are already in handleError State... what next?");
 
                 if let Some(source) = &state.source {
@@ -284,6 +300,8 @@ impl Fallback {
         let source = make_element("uridecodebin", None)?;
         info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
 
+        info!("current playback state is {:?}", self.pipeline.state(None));
+
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
 
         //source.connect("source-setup", false, |r| {
@@ -334,7 +352,13 @@ impl Fallback {
 
         // if running time...
         sleep_ms!(500);
-        cloned_source.set_state(gst::State::Playing)?;
+        if let Err(state) = cloned_source.set_state(gst::State::Playing) {
+            warn!("set state to playing involves an error {:?}", state);
+        }
+        if let Err(state) = self.pipeline.set_state(gst::State::Playing) {
+            warn!("set pipeline state to playing involves an error {:?}", state);
+        }
+
         Ok(())
     }
 

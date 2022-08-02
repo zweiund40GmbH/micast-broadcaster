@@ -326,7 +326,7 @@ impl Broadcast {
 
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
                         warn!("error comes from fallback");
-                        let _ = broadcast.fallback.handle_error();
+                        let _ = broadcast.fallback.triggered_error_from_bus();
 
                         
                     }
