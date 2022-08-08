@@ -143,13 +143,13 @@ impl PlaybackClient {
             clock_port,
         }));
 
-        glib::timeout_add(std::time::Duration::from_secs(5), move || {
+        glib::timeout_add(std::time::Duration::from_secs(10), move || {
             let pipeline = match pipeline_2weak.upgrade() {
                 Some(pipeline) => pipeline,
                 None => return glib::Continue(true),
             };
  
-            info!("player - current pipeline state: {:?}", pipeline.state(None));
+            info!("player - current pipeline state: {:?}", pipeline.state(Some(gst::ClockTime::from_seconds(1))));
 
             Continue(true)
         });

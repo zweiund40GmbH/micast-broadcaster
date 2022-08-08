@@ -373,10 +373,12 @@ impl Broadcast {
         glib::timeout_add(std::time::Duration::from_secs(10), move || {
             let broadcast = match broadcast_weak.upgrade() {
                 Some(broadcast) => broadcast,
-                None => return Continue(false)
+                None => {
+                    return Continue(true)
+                }
             };
 
-            info!("a live, current pipeline state: {:?}", broadcast.pipeline.state(None));
+            info!("a live, current pipeline state: {:?}", broadcast.pipeline.state(Some(gst::ClockTime::from_seconds(1))));
         
             Continue(true)
         });

@@ -123,17 +123,6 @@ impl Fallback {
             pipeline: pipeline.clone(),
         }));
 
-        // measure running time
-        /*
-        
-        let fallback_downgrade = fallback.downgrade();
-        bin_src.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
-            let fallback = upgrade_weak!(fallback_downgrade, gst::PadProbeReturn::Pass);
-            fallback.pad_probe_running_time(pad, info)
-        });
-
-        */
-
         Ok(fallback)
 
     }
@@ -156,7 +145,7 @@ impl Fallback {
 
     fn handle_error(&self) -> Result<()> {
         let mut state = self.state.lock();
-        let pl_state = state.pl_state.clone();
+        let pl_state = &state.pl_state;
 
 
         let stop_before_start = match pl_state {
@@ -174,6 +163,7 @@ impl Fallback {
             CurState::WaitForDecoderSrcPad => {
                 
                 warn!("handling error while wait for decoder src pad (wait 4secs before resume)");
+
 
                 sleep_ms!(4000);
                 // this means we got an error on typefinding.. eventually the uri is wrong,
@@ -299,10 +289,10 @@ impl Fallback {
         
         let source = make_element("uridecodebin", None)?;
         info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
-
         info!("current playback state is {:?}", self.pipeline.state(None));
 
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
+        source.set_property("use-buffering", &true);
 
         //source.connect("source-setup", false, |r| {
         //    let ins = r[1].get::<gst::Element>().unwrap();
@@ -342,7 +332,7 @@ impl Fallback {
 
 
         self.bin.add(&source)?;
-        sleep_ms!(500);
+        sleep_ms!(250);
         
         let cloned_source = source.clone();
         state.pl_state = CurState::WaitForDecoderSrcPad;
@@ -351,7 +341,7 @@ impl Fallback {
         drop(state);
 
         // if running time...
-        sleep_ms!(500);
+        sleep_ms!(250);
         if let Err(state) = cloned_source.set_state(gst::State::Playing) {
             warn!("set state to playing involves an error {:?}", state);
         }
@@ -405,23 +395,11 @@ impl Fallback {
                         state_guard.pl_state = CurState::Retry;
                     }
 
-                    let self_weak = self.downgrade();
-                    glib::timeout_add(std::time::Duration::from_secs(1), move || {
-                        let fallback = match self_weak.upgrade() {
-                            Some(fallback) => fallback,
-                            None => {
-                                warn!("cannot get upgraded weak ref from self inside, handle_error timeout");
-                                return Continue(true)
-                            }
-                        };
-             
-                        if let Err(e) = fallback.handle_error() {
-                            warn!("error on call handle_error inside eos cb : {}", e)
-                        }
-            
-                        Continue(false)
-                    });
-                    
+                    sleep_ms!(1000);
+                    if let Err(e) = self.handle_error() {
+                        warn!("error on call handle_error inside eos cb : {}", e)
+                    }
+
                 } else {
                     {
                         let mut state_guard = self.state.lock();
@@ -463,7 +441,7 @@ impl Fallback {
         
 
         if !state.has_mixer_connected {
-
+            info!("has no mixer connected, connect new one");
             self.mixer.connect_new_sink(&state.bin_src)?;
             state.has_mixer_connected = true;
         }
@@ -474,19 +452,6 @@ impl Fallback {
         drop(state);
 
         Ok(())
-    }
-
-
-    /// ## set the current running time for the _item_
-    /// 
-    /// - lock values to **write**
-    pub fn pad_probe_running_time(&self, pad: &gst::Pad, info: &mut gst::PadProbeInfo) -> gst::PadProbeReturn {
-        super::methods::pad_helper::running_time_method(pad, info, move |clock| {
-            let mut values = self.running_time.write();
-            //debug!("running_time = {}", clock);
-            *values = *clock;
-            drop(values);
-        })
     }
 
 }
