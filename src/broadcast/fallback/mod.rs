@@ -443,10 +443,10 @@ impl Fallback {
         let converter_sink = state.converter_bin.static_pad("sink").unwrap();
 
         let converter_bin_parent = state.converter_bin.parent();
-        warn!("converter_bin_parent is: {:#?}", converter_bin_parent.unwrap().name());
+        info!("converter_bin_parent is: {:#?}", converter_bin_parent.unwrap().name());
 
-        warn!("converter sink is: {:#?}", converter_sink.name());
-        warn!("pad name is is: {:#?}", pad.name());
+        info!("converter sink is: {:#?}", converter_sink.name());
+        info!("pad name is is: {:#?}", pad.name());
 
         pad.link(&converter_sink)?;
 
