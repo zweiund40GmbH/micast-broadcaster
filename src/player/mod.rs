@@ -115,6 +115,7 @@ impl PlaybackClient {
         let clock= create_net_clock(&pipeline, clock_ip, clock_port)?;
 
         let pipeline_weak = pipeline.downgrade();
+        let pipeline_2weak = pipeline.downgrade();
 
         let bus = pipeline.bus().unwrap();
 
@@ -141,6 +142,17 @@ impl PlaybackClient {
             state: Arc::new(Mutex::new(state)),
             clock_port,
         }));
+
+        glib::timeout_add(std::time::Duration::from_secs(5), move || {
+            let pipeline = match pipeline_2weak.upgrade() {
+                Some(pipeline) => pipeline,
+                None => return glib::Continue(true),
+            };
+ 
+            info!("player - current pipeline state: {:?}", pipeline.state(None));
+
+            Continue(true)
+        });
 
         let weak_playbackclient = playbackclient.downgrade();
         rtpbin.connect_pad_added(move |el, pad| {
@@ -248,7 +260,7 @@ impl PlaybackClient {
                     // /* */ buffering_level.lock().unwrap() = percent;
                 }*/    
                 MessageView::ClockLost(_) => {
-                    warn!("ClockLost... get a new clock");
+                    warn!("player - ClockLost... get a new clock");
                     // Get a new clock.
                     let _ = pipeline.set_state(gst::State::Paused);
                     let _ = pipeline.set_state(gst::State::Playing);
@@ -315,12 +327,12 @@ impl PlaybackClient {
  
         let inner_state = self.state.lock();
         if &inner_state.current_clock_ip == clock_ip && &inner_state.current_server_ip == server {
-            info!("do not change ip, cause ip is not changed {} {}", clock_ip, server);
+            info!("player - do not change ip, cause ip is not changed {} {}", clock_ip, server);
             return Ok(())
         }
         drop(inner_state);
 
-        info!("change_clock_and_server - stop playback");
+        info!("player - change_clock_and_server - stop playback");
         self.stop();
         
         let mut state_guard = self.state.lock();
@@ -351,7 +363,7 @@ impl PlaybackClient {
             }
         };
 
-        info!("change_clock_and_server - rtp_eingang changed");
+        info!("player - change_clock_and_server - rtp_eingang changed");
 
         rtcp_eingang.try_set_property( "address", server)?;
         rtcp_senden.try_set_property("host", server)?;
@@ -366,10 +378,10 @@ impl PlaybackClient {
 
         sleep_ms!(200);
 
-        info!("change_clock_and_server - now start player again");
+        info!("player - change_clock_and_server - now start player again");
         self.start();
         
-        info!("change_clock_and_server - started");
+        info!("player - change_clock_and_server - started");
 
 
         Ok(())
@@ -409,7 +421,7 @@ impl PlaybackClient {
             &inner_state.current_output_device == device.unwrap_or("alsasink") && 
             &inner_state.current_output_element == element  
         {
-            info!("device not changed, skip change_output {} {:?}", element, device);
+            info!("player - device not changed, skip change_output {} {:?}", element, device);
             return Ok(()); 
         }
 
@@ -418,7 +430,7 @@ impl PlaybackClient {
 
         self.stop();
 
-        info!("change_output, creates new element {}, with : {:?}", element, device);
+        info!("player - change_output, creates new element {}, with : {:?}", element, device);
         let source = gst::ElementFactory::make(element, None)?;
 
         if let Some(d) = device {
@@ -473,7 +485,7 @@ fn create_pipeline(
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
-    let mut caps = gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    let caps = gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
 
     rtp_src.try_set_property("caps", &caps)?;
     rtp_src.try_set_property("port", rtp_port as i32)?;
