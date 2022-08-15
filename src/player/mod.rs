@@ -171,7 +171,7 @@ impl PlaybackClient {
                 
                 if let Some(recv_rtp_src) = state_guard.recv_rtp_src.as_ref() {
                     info!("already initiate a recv_rtp pad {}. unlink it from rtpdepayload sink", recv_rtp_src.name());
-                    recv_rtp_src.unlink(&decoder_sink);
+                    let _ = recv_rtp_src.unlink(&decoder_sink);
                     info!("src_pad from rtpdepayload sink removed");
                 }
 
@@ -194,7 +194,10 @@ impl PlaybackClient {
     
             let pipeline = match pipeline_weak.upgrade() {
                 Some(pipeline) => pipeline,
-                None => return glib::Continue(false),
+                None => {
+                    warn!("bus add watch failed to upgrade pipeline");
+                    return glib::Continue(false)
+                },
             };
 
             
@@ -488,7 +491,11 @@ fn create_pipeline(
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
-    let caps = gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    let caps = if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
+        gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")
+    } else {
+        gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")
+    }?;
 
     rtp_src.try_set_property("caps", &caps)?;
     rtp_src.try_set_property("port", rtp_port as i32)?;
@@ -520,7 +527,7 @@ fn create_pipeline(
     rtpbin.try_set_property("ntp-sync", &true)?;
     rtpbin.try_set_property("autoremove", &true)?;
 
-    if ENCRYPTION_ENABLED {
+    if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
         crate::encryption::client_encryption(&rtpbin)?;
     }
     
@@ -567,7 +574,7 @@ fn create_pipeline(
 
 fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Result<gst_net::NetClientClock, anyhow::Error> {
     let clock = gst_net::NetClientClock::new(None, address, port, 0 * gst::ClockTime::MSECOND);
-        
+    debug!("clock address: {}", address);
     //let clock_bus = gst::Bus::new();
     //clock.try_set_property("bus", &clock_bus)?;
     clock.try_set_property("timeout", 2 as u64)?;

@@ -28,6 +28,8 @@ use parking_lot::{Mutex, RwLock};
 use anyhow::{bail, anyhow};
 use log::{debug, warn, info};
 
+pub(crate) const ENCRYPTION_ENABLED:bool = true;
+
 // Strong reference to our broadcast server state
 #[derive(Debug, Clone)]
 pub struct Broadcast(Arc<BroadcastInner>);
@@ -166,6 +168,7 @@ impl Broadcast {
         // setup clock for synchronization
         
         let clock = gst::SystemClock::obtain();
+        debug!("add net clock server {} port {}", server_ip, clock_port);
         let net_clock = gst_net::NetTimeProvider::new(&clock, None, clock_port);
         clock.set_property("clock-type", &gst::ClockType::Realtime);
         pipeline.use_clock(Some(&clock));

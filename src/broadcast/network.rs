@@ -46,22 +46,13 @@ pub fn create_bin(
     let payloader = make_element("rtpL24pay", Some("pay0"))?;
     bin.add(&payloader)?;
     
-    //bin.add_many(&[&capsfilter, &payloader])?;
-
-    //let caps = gst::Caps::builder("audio/x-raw")
-    //    .field("rate", &48000i32)
-    //    .build();
-    //capsfilter.try_set_property("caps", &caps).unwrap();  
-    //gst::Element::link_many(&[&capsfilter, &payloader])?;
-
     // network and transport
     let rtpbin = make_element("rtpbin", None)?;
 
 
-    crate::encryption::server_encryption(&rtpbin)?;
-
-    
-
+    if super::ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
+        crate::encryption::server_encryption(&rtpbin)?;
+    }
 
     let rtp_udp_sink  = make_element("udpsink",Some("network_rtp_sink"))?;
     let rtcp_udp_sink = make_element("udpsink",Some("network_rtcp_sink"))?;
@@ -89,8 +80,6 @@ pub fn create_bin(
     rtcp_udp_sink.try_set_property("async", &false)?; 
     rtcp_udp_sink.try_set_property("sync", &false)?;
 
-    //multicast-iface=enp5s0
-
     rtcp_udp_src.try_set_property("address", server_address)?;
     rtcp_udp_src.try_set_property("port", rtcp_receiver_port)?;
     //rtcp_udp_sink.try_set_property("async", &true)?; 
@@ -107,8 +96,8 @@ pub fn create_bin(
     });
 
 
-    rtp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0")?;
-    rtcp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0")?;
+    //rtp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
+    //rtcp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
 
     rtp_udp_sink.try_set_property("force-ipv4", &true)?;
     rtcp_udp_sink.try_set_property("force-ipv4", &true)?;

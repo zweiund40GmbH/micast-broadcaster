@@ -129,9 +129,11 @@ fn encrypt_bin(rtpbin: &gst::Element, all_signals: Vec<(RTPorRTCP, DeOrEncoder)>
         let signal = format!("request-{}-{}", signal_type.to_string(), coder_type.to_string());
 
         let signal_cloned = signal.clone();
+
+        
         rtpbin.connect(&signal, false, move |vars| {
 
-            let session:u32 = vars[1].get().unwrap_or(785544);
+            let session:u32 = vars[1].get().unwrap_or(0);
             debug!("setup an {} for session {}", signal_cloned, session);
 
             Some(callback(&signal_type_cloned, &coder_type_cloned, &key_cloned, &mki_cloned, &session).expect("this should never fail!"))

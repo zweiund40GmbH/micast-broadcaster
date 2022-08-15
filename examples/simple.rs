@@ -23,8 +23,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let broadcaster = broadcast::Builder::new()
         //.set_server_ip("127.0.0.1")
-        .set_server_ip("127.0.0.1")
-        .set_broadcast_ip("127.0.0.1")
+        .set_server_ip("224.1.1.43")
+        .set_broadcast_ip("224.1.1.43")
+        //.set_server_ip("127.0.0.1")
+        //.set_broadcast_ip("127.0.0.1")
         //.set_audiorate(44100 / 2)
         .set_audiorate(44100)
         .set_spot_volume(Some(0.3))
