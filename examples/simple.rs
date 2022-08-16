@@ -39,15 +39,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     broadcaster.start()?;
     
     //broadcaster.play("http://server35757.streamplus.de/stream.mp3")?;
-    broadcaster.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3")?;
-
-
+    broadcaster.play("http://itcoops.de:8000/drumyourass.mp3")?;
+    //let _ = broadcaster.play("http://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3");     
 
     // https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3
 
     // https://wdr-1live-live.sslcast.addradio.de/wdr/1live/live/mp3/128/stream.mp3
 
-    
+    //let bc_clone = broadcaster.clone();
+    //glib::timeout_add(std::time::Duration::from_secs(60), move || {
+    //    let _ = bc_clone.play("http://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3");     
+    //    Continue(true)
+    //});
 
 
 

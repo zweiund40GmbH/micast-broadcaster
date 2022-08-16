@@ -233,11 +233,14 @@ impl Fallback {
             if sourcepad.is_none() {
                 return Err(anyhow!("cannot remove stream cause Sourcepad is empty"));
             }
+
+            info!("current source state: {:#?}", source.state(None));
  
             // we crate a probe for triggering an EOS and call this callback
             let sourcepad = sourcepad.unwrap();
             let self_downgrade = self.downgrade();
             sourcepad.add_probe(gst::PadProbeType::BLOCK_DOWNSTREAM, move |pad, probe_info| {
+                info!("add probe blockdownstream triggered");
                 let fallback = upgrade_weak!(self_downgrade, gst::PadProbeReturn::Ok);
                 fallback.pad_eos_cb(pad, probe_info).map_err(|e| {
                     warn!("pad_eos_cb triggered an error: {}", e);
@@ -254,7 +257,23 @@ impl Fallback {
 
         // after creating the probe we send eos
         info!("send eos event");
-        convertsink.send_event(gst::event::Eos::new());
+        //convertsink.set_active(true);
+        info!("convertsink task_state: {:#?}, last_flow_result: {:#?}", convertsink.task_state(), convertsink.last_flow_result());
+        let re = convertsink.send_event(gst::event::Eos::new());
+
+        info!("result of send event is {}", re);
+        if re == false {
+
+            let state = self.state.lock();
+            if let Some(source) = state.source.as_ref() {
+                let _ = source.set_state(gst::State::Null);
+                let _ = source.set_state(gst::State::Playing);
+            }
+            drop(state);
+            
+
+        }
+        //convertsink.push_event(gst::event::Eos::new());
         
         Ok(())
     }
@@ -276,10 +295,11 @@ impl Fallback {
             
             info!("source is not empty, try restart stream");
 
-            if let Some(source) = &state.source {
+            /*if let Some(source) = &state.source {
+                
                 let _ = self.bin.remove(source);
                 state.source = None;
-            }
+            }*/
             drop(state);
             return self.handle_error();
         }
@@ -308,13 +328,12 @@ impl Fallback {
 
         source.connect_pad_added(move |src, pad| {
             let fb = upgrade_weak!(self_downgrade);
-            sleep_ms!(200);
-            warn!("Source decoder name is: {:?}", src.name());
+            info!("Source decoder name is: {:?}", src.name());
             if None == src.parent() {
                 warn!(" source is not connected... skip this part");
                 return
             }
-            warn!("source_connect_pad_added_parent: {:#?}", src.parent().unwrap().name());
+            info!("source_connect_pad_added_parent: {:#?}", src.parent().unwrap().name());
             if let Err(e) = fb.pad_added_cb(pad) {
                 warn!("error on add pad from decoder: {}", e);
 
@@ -468,6 +487,11 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     let bin = gst::Bin::new(name);
     let mut elements = Vec::new();
 
+    let watchdog = make_element("watchdog", name.and_then(|n: &str| Some( format!("{}_watchdog", n)) ).as_ref().map(|x| &**x) )?;
+    bin.add(&watchdog)?;
+    elements.push(watchdog);
+
+
     let resampler = make_element("audioresample", name.and_then(|n: &str| Some( format!("{}_audioresample", n)) ).as_ref().map(|x| &**x) )?;
     bin.add(&resampler)?;
     elements.push(resampler);
@@ -481,19 +505,7 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     bin.add(&capsfilter)?;
     elements.push(capsfilter);
 
-    /*let clocksync = gst::ElementFactory::make("clocksyncGBTSNICH", None)
-        .or_else(|_| -> Result<_, glib::BoolError> {
-            debug!("use identy instead of clocksync");
-            let identity = gst::ElementFactory::make("identity", None)?;
-            identity.set_property("sync", true);
-            Ok(identity)
-        })
-        .expect("No clocksync or identity found");
-    bin.add(&clocksync)?;
-    elements.push(clocksync);
 
-    // Workaround for issues caused by https://gitlab.freedesktop.org/gstreamer/gst-plugins-base/-/issues/800
-    
     let clocksync_queue = gst::ElementFactory::make("queue", None).expect("No queue found");
     clocksync_queue.set_properties(&[
         ("max-size-buffers", &0u32),
@@ -502,7 +514,7 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     ]);
 
     bin.add(&clocksync_queue)?;
-    elements.push(clocksync_queue);*/
+    elements.push(clocksync_queue);
     
     
     gst::Element::link_many(elements.iter().map(|e| e).collect::<Vec<&gst::Element>>().as_slice())?;

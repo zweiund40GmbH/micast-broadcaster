@@ -307,7 +307,7 @@ impl Broadcast {
                     };
                     warn!("error comes from: {:?}", src.name());
 
-                    if src.has_as_ancestor(&broadcast.network_bin) {
+                    if src.has_as_ancestor(&broadcast.network_bin) || src.name() == "fallbackconvertbin_watchdog" {
                         warn!("network communication error {:#?}", err);
 
                         warn!("we wait 5 seconds and restart pipeline");
@@ -330,8 +330,6 @@ impl Broadcast {
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
                         warn!("error comes from fallback");
                         let _ = broadcast.fallback.triggered_error_from_bus();
-
-                        
                     }
 
 
