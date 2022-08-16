@@ -148,20 +148,20 @@ impl Fallback {
         let state = self.state.lock();
         if CurState::PlaySource == state.pl_state {
             warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
-            let weak_pipeline = self.pipeline.downgrade();
-            glib::timeout_add(std::time::Duration::from_secs(1), move || {
-                
-                let pipeline = match weak_pipeline.upgrade() {
-                    Some(pipeline) => pipeline,
-                    None => return Continue(true),
-                };
-                warn!("set pipeline to null and than to playing");
-                let _ = pipeline.set_state(gst::State::Null);
-                sleep_ms!(500);
-                let _ = pipeline.set_state(gst::State::Playing);
+            self.handle_error()?;
+            //let weak_pipeline = self.pipeline.downgrade();
+            //glib::timeout_add(std::time::Duration::from_secs(1), move || {
+            //    let pipeline = match weak_pipeline.upgrade() {
+            //        Some(pipeline) => pipeline,
+            //        None => return Continue(true),
+            //    };
+            //    warn!("set pipeline to null and than to playing");
+            //    let _ = pipeline.set_state(gst::State::Null);
+            //    sleep_ms!(500);
+            //    let _ = pipeline.set_state(gst::State::Playing);
+            //    Continue(false)
+            //});
 
-                Continue(false)
-            });
             return Ok(())
         }
 
@@ -311,11 +311,10 @@ impl Fallback {
             
             info!("source is not empty, try restart stream");
 
-            /*if let Some(source) = &state.source {
-                
+            if let Some(source) = &state.source {
                 let _ = self.bin.remove(source);
                 state.source = None;
-            }*/
+            }
             drop(state);
             return self.handle_error();
         }
