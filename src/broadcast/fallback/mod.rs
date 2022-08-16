@@ -151,14 +151,24 @@ impl Fallback {
             
             state.pl_state = CurState::HandleError;
             
+            self.pipeline.call_async(move |pipeline| {
+                warn!("call async to stop pipeline");
+                let _ = pipeline.set_state(gst::State::Null);
+                warn!("wait for result after stop source state");
+                let _ = pipeline.state(None);
+
+                warn!("restart pipeline");
+                let _ = pipeline.set_state(gst::State::Playing);
+            });
 
             if let Some(source) = state.source.as_ref() {
                 warn!("stop source state");
                 let _ = source.set_state(gst::State::Null);
                 warn!("wait for result after stop source state");
                 let _ = source.state(None);
-                warn!("set source to play");
-                let _ = source.set_state(gst::State::Playing);
+                
+                let _ = self.bin.remove(source);
+                state.source = None;
             }
 
             drop(state);
