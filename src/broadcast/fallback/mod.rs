@@ -150,12 +150,20 @@ impl Fallback {
             warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
             
             state.pl_state = CurState::HandleError;
+            
+
+            if let Some(source) = state.source.as_ref() {
+                warn!("stop source state");
+                let _ = source.set_state(gst::State::Null);
+                warn!("wait for result after stop source state");
+                let _ = source.state(None);
+                warn!("set source to play");
+                let _ = source.set_state(gst::State::Playing);
+            }
+
             drop(state);
 
-            let _ = self.pipeline.set_state(gst::State::Null);
-            
-            let _ = self.pipeline.set_state(gst::State::Playing);
-
+            warn!("now want to handle_error");
             self.handle_error()?;
             //let weak_pipeline = self.pipeline.downgrade();
             //glib::timeout_add(std::time::Duration::from_secs(1), move || {
