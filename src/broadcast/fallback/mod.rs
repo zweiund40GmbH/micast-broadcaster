@@ -142,6 +142,32 @@ impl Fallback {
         Ok(())
     }
 
+    pub fn triggered_watchdog(&self) -> Result<()> {
+        info!("got an error from watchdog.. what want we to do?");
+
+        let state = self.state.lock();
+        if CurState::PlaySource == state.pl_state {
+            warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
+            let weak_pipeline = self.pipeline.downgrade();
+            glib::timeout_add(std::time::Duration::from_secs(1), move || {
+                
+                let pipeline = match weak_pipeline.upgrade() {
+                    Some(pipeline) => pipeline,
+                    None => return Continue(true),
+                };
+                warn!("set pipeline to null and than to playing");
+                let _ = pipeline.set_state(gst::State::Null);
+                sleep_ms!(500);
+                let _ = pipeline.set_state(gst::State::Playing);
+
+                Continue(false)
+            });
+            return Ok(())
+        }
+
+        Ok(())
+    }
+
 
     fn handle_error(&self) -> Result<()> {
         let mut state = self.state.lock();

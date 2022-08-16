@@ -307,7 +307,7 @@ impl Broadcast {
                     };
                     warn!("error comes from: {:?}", src.name());
 
-                    if src.has_as_ancestor(&broadcast.network_bin) || src.name() == "fallbackconvertbin_watchdog" {
+                    if src.has_as_ancestor(&broadcast.network_bin) {
                         warn!("network communication error {:#?}", err);
 
                         warn!("we wait 5 seconds and restart pipeline");
@@ -325,7 +325,14 @@ impl Broadcast {
 
                             Continue(false)
                         });
+                    } else {
+                        if src.name() == "fallbackconvertbin_watchdog" {
+                            warn!("watchdog error on bus event");
+                            let _ = broadcast.fallback.triggered_watchdog();
+                            return gst::BusSyncReply::Pass;
+                        }
                     }
+
 
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
                         warn!("error comes from fallback");
