@@ -145,10 +145,13 @@ impl Fallback {
     pub fn triggered_watchdog(&self) -> Result<()> {
         info!("got an error from watchdog.. what want we to do?");
 
-        let state = self.state.lock();
+        let mut state = self.state.lock();
         if CurState::PlaySource == state.pl_state {
             warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
+            
+            state.pl_state = CurState::HandleError;
             drop(state);
+            
             self.handle_error()?;
             //let weak_pipeline = self.pipeline.downgrade();
             //glib::timeout_add(std::time::Duration::from_secs(1), move || {
@@ -328,7 +331,7 @@ impl Fallback {
         info!("current playback state is {:?}", self.pipeline.state(None));
 
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
-        source.set_property("use-buffering", &true);
+        source.set_property("use-buffering", &false);
 
         //source.connect("source-setup", false, |r| {
         //    let ins = r[1].get::<gst::Element>().unwrap();
