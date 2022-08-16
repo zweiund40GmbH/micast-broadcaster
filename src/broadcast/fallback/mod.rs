@@ -149,9 +149,10 @@ impl Fallback {
         if CurState::PlaySource == state.pl_state {
             warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
             
-            state.pl_state = CurState::HandleError;
-            
+            //state.pl_state = CurState::HandleError;
+            //drop(state);
             self.pipeline.call_async(move |pipeline| {
+                sleep_ms!(2000);
                 warn!("call async to stop pipeline");
                 let _ = pipeline.set_state(gst::State::Null);
                 warn!("wait for result after stop source state");
@@ -161,17 +162,17 @@ impl Fallback {
                 let _ = pipeline.set_state(gst::State::Playing);
             });
 
-            if let Some(source) = state.source.as_ref() {
-                warn!("stop source state");
-                let _ = source.set_state(gst::State::Null);
-                warn!("wait for result after stop source state");
-                let _ = source.state(None);
-                
-                let _ = self.bin.remove(source);
-                state.source = None;
-            }
+            //if let Some(source) = state.source.as_ref() {
+            //    warn!("stop source state");
+            //    let _ = source.set_state(gst::State::Null);
+            //    warn!("wait for result after stop source state");
+            //    let _ = source.state(None);
+            //    
+            //    let _ = self.bin.remove(source);
+            //    state.source = None;
+            //}
 
-            drop(state);
+            
 
             warn!("now want to handle_error");
             self.handle_error()?;
