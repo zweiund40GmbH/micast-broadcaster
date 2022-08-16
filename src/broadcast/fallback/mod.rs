@@ -148,6 +148,7 @@ impl Fallback {
         let state = self.state.lock();
         if CurState::PlaySource == state.pl_state {
             warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
+            drop(state);
             self.handle_error()?;
             //let weak_pipeline = self.pipeline.downgrade();
             //glib::timeout_add(std::time::Duration::from_secs(1), move || {
