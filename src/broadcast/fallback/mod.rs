@@ -151,7 +151,11 @@ impl Fallback {
             
             state.pl_state = CurState::HandleError;
             drop(state);
+
+            let _ = self.pipeline.set_state(gst::State::Null);
             
+            let _ = self.pipeline.set_state(gst::State::Playing);
+
             self.handle_error()?;
             //let weak_pipeline = self.pipeline.downgrade();
             //glib::timeout_add(std::time::Duration::from_secs(1), move || {
