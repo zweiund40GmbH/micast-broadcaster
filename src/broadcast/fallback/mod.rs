@@ -262,17 +262,7 @@ impl Fallback {
         let re = convertsink.send_event(gst::event::Eos::new());
 
         info!("result of send event is {}", re);
-        if re == false {
-
-            let state = self.state.lock();
-            if let Some(source) = state.source.as_ref() {
-                let _ = source.set_state(gst::State::Null);
-                let _ = source.set_state(gst::State::Playing);
-            }
-            drop(state);
-            
-
-        }
+        
         //convertsink.push_event(gst::event::Eos::new());
         
         Ok(())
