@@ -329,7 +329,15 @@ impl Broadcast {
 
                     if src.name() == "fallbackconvertbin_watchdog" {
                         //warn!("watchdog error {:#?}", err);
-                        let _ = broadcast.fallback.triggered_watchdog();// TOD.is_ok() 
+                        if broadcast.fallback.triggered_watchdog().is_ok() {
+                            broadcast.pipeline.call_async(|pipeline| {
+                                warn!("watchdog triggered error, so we restart pipeline");
+                                sleep_ms!(400);
+                                let _ = pipeline.set_state(gst::State::Null);
+                                sleep_ms!(200);
+                                let _ = pipeline.set_state(gst::State::Playing);
+                            })
+                        }
                         return gst::BusSyncReply::Pass;
                     }
 

@@ -383,8 +383,6 @@ impl Fallback {
         cloned_source.call_async(|source| {
             let _ = source.set_state(gst::State::Playing);
         });
-        
-        info!("tt");
         self.pipeline.call_async(|pipeline| {
             info!("set pipeline to playing");
             let _ = pipeline.set_state(gst::State::Playing);
