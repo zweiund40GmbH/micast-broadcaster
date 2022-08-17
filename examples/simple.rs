@@ -46,11 +46,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // https://wdr-1live-live.sslcast.addradio.de/wdr/1live/live/mp3/128/stream.mp3
 
-    //let bc_clone = broadcaster.clone();
-    //glib::timeout_add(std::time::Duration::from_secs(60), move || {
-    //    let _ = bc_clone.play("http://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3");     
-    //    Continue(true)
-    //});
+    let bc_clone = broadcaster.clone();
+    glib::timeout_add(std::time::Duration::from_secs(60), move || {
+        let _ = bc_clone.play("http://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3");     
+        Continue(true)
+    });
 
 
 

@@ -13,6 +13,7 @@ enum CurState {
     PlaySource,
     Retry,
     HandleError,
+    HandleWatchdogError,
     WaitForDecoderSrcPad,
     GotDecoderSrcPad,
 }
@@ -128,8 +129,9 @@ impl Fallback {
     }
 
     pub fn triggered_error_from_bus(&self) -> Result<()> {
-        info!("triggered an error from bus");
+        
         let state = self.state.lock();
+        info!("triggered an error from bus, curState: {:?}", state.pl_state);
         if CurState::HandleError == state.pl_state {
             info!("triggered error from bus, but state is already in handleError mode, skipping");
             return Ok(())
@@ -143,56 +145,29 @@ impl Fallback {
     }
 
     pub fn triggered_watchdog(&self) -> Result<()> {
-        info!("got an error from watchdog.. what want we to do?");
+        
 
         let mut state = self.state.lock();
+
+        info!("got an error from watchdog.. what want we to do? curState: {:?}", state.pl_state);
         if CurState::PlaySource == state.pl_state {
-            warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong...");
+            state.pl_state = CurState::HandleWatchdogError;
+            drop(state);
+            warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong... we trigger handle_error with State set to Retry");
             
-            //state.pl_state = CurState::HandleError;
-            //drop(state);
-            self.pipeline.call_async(move |pipeline| {
-                sleep_ms!(2000);
-                warn!("call async to stop pipeline");
-                let _ = pipeline.set_state(gst::State::Null);
-                warn!("wait for result after stop source state");
-                let _ = pipeline.state(None);
-
-                warn!("restart pipeline");
-                let _ = pipeline.set_state(gst::State::Playing);
-            });
-
-            //if let Some(source) = state.source.as_ref() {
-            //    warn!("stop source state");
-            //    let _ = source.set_state(gst::State::Null);
-            //    warn!("wait for result after stop source state");
-            //    let _ = source.state(None);
-            //    
-            //    let _ = self.bin.remove(source);
-            //    state.source = None;
-            //}
-
+            let _ = self.handle_error();
             
-
-            warn!("now want to handle_error");
-            self.handle_error()?;
-            //let weak_pipeline = self.pipeline.downgrade();
-            //glib::timeout_add(std::time::Duration::from_secs(1), move || {
-            //    let pipeline = match weak_pipeline.upgrade() {
-            //        Some(pipeline) => pipeline,
-            //        None => return Continue(true),
-            //    };
-            //    warn!("set pipeline to null and than to playing");
-            //    let _ = pipeline.set_state(gst::State::Null);
-            //    sleep_ms!(500);
-            //    let _ = pipeline.set_state(gst::State::Playing);
-            //    Continue(false)
-            //});
 
             return Ok(())
         }
 
-        Ok(())
+        if CurState::WaitForDecoderSrcPad == state.pl_state {
+            drop(state);
+            warn!("okay, watchdog gets triggered and we wait for the decodersrcpad... let us try");
+            let _ = self.handle_error();
+        }
+
+        Err(anyhow!("Not in PlaySource State, Watchdog error can not triggered"))
     }
 
 
@@ -218,7 +193,7 @@ impl Fallback {
                 warn!("handling error while wait for decoder src pad (wait 4secs before resume)");
 
 
-                sleep_ms!(4000);
+                sleep_ms!(2000);
                 // this means we got an error on typefinding.. eventually the uri is wrong,
                 // so we try to set a probe pad
                 if let Some(source) = &state.source {
@@ -228,6 +203,10 @@ impl Fallback {
                     
                 }
 
+                false
+            },
+            CurState::HandleWatchdogError => {
+                info!("HandleWatchdogError, try restart");
                 false
             },
             CurState::Retry => {
@@ -309,13 +288,9 @@ impl Fallback {
 
 
         // after creating the probe we send eos
-        info!("send eos event");
-        //convertsink.set_active(true);
-        info!("convertsink task_state: {:#?}, last_flow_result: {:#?}", convertsink.task_state(), convertsink.last_flow_result());
+        info!("send eos event task_state: {:#?}, last_flow_result: {:#?}", convertsink.task_state(), convertsink.last_flow_result());
         let re = convertsink.send_event(gst::event::Eos::new());
-
         info!("result of send event is {}", re);
-        
         //convertsink.push_event(gst::event::Eos::new());
         
         Ok(())
@@ -336,14 +311,15 @@ impl Fallback {
         // wir gehen hier davon aus das es keine source gibt
         if source.is_some() {
             
-            info!("source is not empty, try restart stream");
+            info!("start: source is not empty, remove source from bin and set to None. Than wait 200 ms and continue");
 
             if let Some(source) = &state.source {
                 let _ = self.bin.remove(source);
                 state.source = None;
             }
-            drop(state);
-            return self.handle_error();
+            //drop(state);
+            sleep_ms!(200);
+            //return self.handle_error();
         }
 
         
@@ -403,12 +379,18 @@ impl Fallback {
 
         // if running time...
         sleep_ms!(250);
-        if let Err(state) = cloned_source.set_state(gst::State::Playing) {
-            warn!("set state to playing involves an error {:?}", state);
-        }
-        if let Err(state) = self.pipeline.set_state(gst::State::Playing) {
-            warn!("set pipeline state to playing involves an error {:?}", state);
-        }
+        info!("set states to playing");
+        cloned_source.call_async(|source| {
+            let _ = source.set_state(gst::State::Playing);
+        });
+        
+        info!("tt");
+        self.pipeline.call_async(|pipeline| {
+            info!("set pipeline to playing");
+            let _ = pipeline.set_state(gst::State::Playing);
+        });
+        
+        info!("current playback state 2 is {:?}", self.pipeline.state(None));
 
         Ok(())
     }
@@ -509,6 +491,8 @@ impl Fallback {
 
         // if everythink works well, we add the sourcepad to state
         state.source_pad = Some(pad.clone());
+        sleep_ms!(500);
+        info!("Pad Added, set State to PlaySource");
         state.pl_state = CurState::PlaySource;
         drop(state);
 
@@ -530,6 +514,7 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     let mut elements = Vec::new();
 
     let watchdog = make_element("watchdog", name.and_then(|n: &str| Some( format!("{}_watchdog", n)) ).as_ref().map(|x| &**x) )?;
+    watchdog.set_property("timeout", &3000i32);
     bin.add(&watchdog)?;
     elements.push(watchdog);
 

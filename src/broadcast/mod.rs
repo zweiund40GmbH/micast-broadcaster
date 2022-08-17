@@ -305,7 +305,6 @@ impl Broadcast {
                         },
                         Some(src) => src,
                     };
-                    warn!("error comes from: {:?}", src.name());
 
                     if src.has_as_ancestor(&broadcast.network_bin) {
                         warn!("network communication error {:#?}", err);
@@ -324,35 +323,25 @@ impl Broadcast {
                             let _ = pipeline.set_state(gst::State::Playing);
 
                             Continue(false)
-                        });
-                    } else {
-                        if src.name() == "fallbackconvertbin_watchdog" {
-                            warn!("watchdog error on bus event");
-                            warn!("we wait 5 seconds and restart pipeline");
-                            let weak_pipeline = broadcast.pipeline.downgrade();
-                            glib::timeout_add(std::time::Duration::from_secs(5), move || {
-                                
-                                let pipeline = match weak_pipeline.upgrade() {
-                                    Some(pipeline) => pipeline,
-                                    None => return Continue(true),
-                                };
-                                warn!("set pipeline to null and than to playing");
-                                let _ = pipeline.set_state(gst::State::Null);
-                                sleep_ms!(500);
-                                let _ = pipeline.set_state(gst::State::Playing);
+                        }); 
+                        return gst::BusSyncReply::Pass;
+                    }
 
-                                Continue(false)
-                            });
-                            //let _ = broadcast.fallback.triggered_watchdog();
-                            //return gst::BusSyncReply::Pass;
-                        }
+                    if src.name() == "fallbackconvertbin_watchdog" {
+                        //warn!("watchdog error {:#?}", err);
+                        let _ = broadcast.fallback.triggered_watchdog();// TOD.is_ok() 
+                        return gst::BusSyncReply::Pass;
                     }
 
 
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
                         warn!("error comes from fallback");
                         let _ = broadcast.fallback.triggered_error_from_bus();
+                        return gst::BusSyncReply::Pass;
                     }
+
+
+                    warn!("error comes from: {:?}", src.name());
 
 
                 }
