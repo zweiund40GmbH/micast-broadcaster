@@ -106,7 +106,7 @@ impl LocalPlayer {
         tcp_client.try_set_property("host", "127.0.0.1")?;
         //tcp_client.try_set_property("host", "10.42.200.43")?;
 
-        let srcpad = tcp_client.static_pad("src").unwrap();
+        let _srcpad = tcp_client.static_pad("src").unwrap();
 
 
         //srcpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
@@ -159,6 +159,7 @@ impl LocalPlayer {
         if let Err(e) = self.pipeline.set_state(gst::State::Playing) {
             debug!("could not switch to playing, cause of {:?}", e);
             self.pipeline.set_state(gst::State::Ready)?;
+            self.pipeline.set_state(gst::State::Playing)?;
         }
 
         Ok(())

@@ -299,9 +299,24 @@ impl Fallback {
     pub fn start(&self, uri: Option<&str>) -> Result<()> {
         let mut state = self.state.lock();
         let source = state.source.clone();
-        
+
         if let Some(uri) = uri {
-            state.uri = Some(uri.to_string());
+            
+            let change_uri = if let Some(current_uri) = &state.uri {
+                if current_uri == uri {
+                    warn!("dont switch uri to current uri, cause it is the same");
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+
+            if change_uri {
+                state.uri = Some(uri.to_string());
+            }
+            
         }
 
         if state.uri.is_none() {
@@ -512,7 +527,7 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     let mut elements = Vec::new();
 
     let watchdog = make_element("watchdog", name.and_then(|n: &str| Some( format!("{}_watchdog", n)) ).as_ref().map(|x| &**x) )?;
-    watchdog.set_property("timeout", &3000i32);
+    watchdog.set_property("timeout", &13000i32);
     bin.add(&watchdog)?;
     elements.push(watchdog);
 

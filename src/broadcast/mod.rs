@@ -584,6 +584,7 @@ impl Broadcast {
     /// 
     pub fn play(&self, uri: &str) -> Result<(), anyhow::Error> {
         info!("start playing: {}", uri);
+        
         self.fallback.start(Some(uri))?;
         Ok(())
     }
