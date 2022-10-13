@@ -37,6 +37,6 @@ futures = "0.3"
 env_logger = "0.9"
 
 [features]
-default = ["v1_18"]
+default = ["v1_20"]
 v1_20 = ["gst/v1_20"]
 v1_18 = ["gst/v1_18"]

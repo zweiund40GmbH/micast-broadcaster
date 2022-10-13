@@ -68,7 +68,7 @@ impl LocalPlayer {
                             match a {
                                 gst::ResourceError::OpenRead => { 
                                     warn!("Local tcp client cannot open the stream, we want to restart it");
-                                    sleep_ms!(2400);
+                                    sleep_ms!(500);
                                     let _ = pipeline.set_state(gst::State::Ready);
                                     let _ = pipeline.set_state(gst::State::Playing);
                                 }
@@ -108,30 +108,6 @@ impl LocalPlayer {
 
         let _srcpad = tcp_client.static_pad("src").unwrap();
 
-
-        //srcpad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |pad, info| {
-        //    if let Some(data) = &info.data {
-        //        match data {
-        //            gst::PadProbeData::Buffer(..) => {
-        //                
-        //            }
-        //            gst::PadProbeData::Event(evt) => {
-        //               if evt.type_() != gst::EventType::Latency {
-        //                    //debug!("received event upstream: {:#?}", info);
-        //               }
-        //               if evt.type_() == gst::EventType::Eos {
-        //                    debug!("received EOS on tcp src probe, restart pipeline!");
-        //                    //sleep_ms!(700);
-        //                    return gst::PadProbeReturn::Remove;
-        //               }
-        //            }
-        //            _ => {
-        //            
-        //            }
-        //        }
-        //    }
-        //    gst::PadProbeReturn::Ok
-        //});
         
         let caps_element = make_element("capsfilter", Some("caps_element"))?;
         let caps = gst::Caps::from_str(&format!(r#"

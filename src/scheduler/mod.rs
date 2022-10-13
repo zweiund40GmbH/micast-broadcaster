@@ -5,6 +5,7 @@ use anyhow::bail;
 use chrono::prelude::*;
 use log::{info, warn};
 
+
 use std::sync::mpsc;
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ pub struct ScheduledSpot {
 impl Scheduler {
 
     pub fn new() -> Scheduler {
+        
         let (sender, recv) = mpsc::channel();
         Scheduler {
             spots: Vec::new(),
@@ -202,7 +204,8 @@ mod tests {
     #[test]
     fn spots_next() {
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="08:00" end="22:00" weekdays="Mon" interval="5m"/>
             </spots>
         </TimeTable>"#;
@@ -257,7 +260,8 @@ mod tests {
     #[test]
     fn spots_date_tests() {
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+            <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+            <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="10:30" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
         </TimeTable>"#;
@@ -276,9 +280,40 @@ mod tests {
     }
 
     #[test]
+    fn spots_single_shot_every_day() {
+        env_logger::init();
+
+        info!("hello");
+
+        let s = r#"<TimeTable>
+            <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        
+            <spots file="0" start="2022-04-01T17:00:00" end="2090-06-01T23:59:00">
+                <schedules start="10:00" end="10:05" interval="2h" weekdays="Mon-Sun"/>
+            </spots>
+        </TimeTable>"#;
+
+        let local_time = Local.ymd(2022, 4, 4).and_hms(10, 00, 00);
+
+        //println!("local_time: {}", local_time);
+        let mut out = Scheduler::new();
+        let e = out.from_str(&s);
+        if let Err(e) = e {
+            warn!("error on parsing : {:#?}", e);
+        }
+        let _ = out.process(local_time);
+
+
+        println!("output: {:?}", out);
+
+        assert!(out.spots.len() == 1);
+    }
+
+    #[test]
     fn spots_date_tests_2() {
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
         </TimeTable>"#;
@@ -299,7 +334,8 @@ mod tests {
     fn spots_load() {
         // 2022-04-04 10:30:00 ist ein Montag
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
         </TimeTable>"#;
@@ -319,7 +355,8 @@ mod tests {
 
         // 2022-04-04 10:30:00 ist ein Montag
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
         </TimeTable>"#;
@@ -335,7 +372,8 @@ mod tests {
         ));
 
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
@@ -362,10 +400,11 @@ mod tests {
     fn spots_sort() {
 
         let s = r#"<TimeTable>
-            <spots uri="file:///test.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="07:00" end="22:00" weekdays="Mon" interval="2h"/>
             </spots>
-            <spots uri="file:///ab_9_2.mp3" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+            <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
                 <schedules start="09:20" end="22:00" weekdays="Sun-Mon,Fri" interval="4h"/>
             </spots>
         </TimeTable>"#;

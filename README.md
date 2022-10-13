@@ -2,6 +2,9 @@
 
 This Library work as an RTP Radio Station with Network-Time Synchronization.
 
+
+## convert to mp3 in right format
+for f in *.mp3 ; do ffmpeg -i "$f" -ar 44100 -ac 1 -acodec libmp3lame -q:a 2 "${f%.*}N.mp3"; done
 ## Example
 
 - run simple example to start a rtp server. be sure to change the audio file path's in simple.rs

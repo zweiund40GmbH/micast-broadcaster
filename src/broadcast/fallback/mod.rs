@@ -8,14 +8,20 @@ use std::sync::{Arc, Weak};
 use crate::sleep_ms;
 
 #[derive(Clone, PartialEq, Debug)]
-enum CurState {
+enum CurrentState {
     DoNothing,
     PlaySource,
     Retry,
-    HandleError,
-    HandleWatchdogError,
     WaitForDecoderSrcPad,
-    GotDecoderSrcPad,
+    ChangeUri,
+}
+
+
+#[derive(Clone, PartialEq, Debug)]
+enum ErrorState {
+    None,
+    WatchdogError,
+    NetworkError,
 }
 
 
@@ -24,12 +30,13 @@ struct State {
     uri: Option<String>,
     source: Option<gst::Element>,
     converter_bin: gst::Bin,
+    watchdog: gst::Element,
     bin_src: gst::Pad,
 
     source_pad: Option<gst::Pad>,
     has_mixer_connected: bool,
-    is_in_error_state: bool,
-    pl_state: CurState,
+    current_state: CurrentState,
+    error_state: ErrorState,
 }
 
 
@@ -87,7 +94,7 @@ impl Fallback {
         // setup bin
         let bin = gst::Bin::new(Some("fallbackbin"));
 
-        let converter_bin = create_converter_bin(Some("fallbackconvertbin"), None)?;
+        let (converter_bin, watchdog) = create_converter_bin(Some("fallbackconvertbin"), None)?;
         bin.add(&converter_bin)?;
 
         let src_pad = gst::GhostPad::with_target(
@@ -105,11 +112,12 @@ impl Fallback {
             uri: None,
             source: None,
             converter_bin,
+            watchdog,
             bin_src: bin_src.clone(),
             source_pad: None,
-            pl_state: CurState::DoNothing,
+            current_state: CurrentState::DoNothing,
+            error_state: ErrorState::None,
             has_mixer_connected: false,
-            is_in_error_state: false,
         };
 
         
@@ -130,16 +138,55 @@ impl Fallback {
 
     pub fn triggered_error_from_bus(&self) -> Result<()> {
         
-        let state = self.state.lock();
-        info!("triggered an error from bus, curState: {:?}", state.pl_state);
-        if CurState::HandleError == state.pl_state {
-            info!("triggered error from bus, but state is already in handleError mode, skipping");
-            return Ok(())
+        let mut state = self.state.lock();
+        info!("triggered an error from bus, current_state: {:?}, error_state: {:?} pipeline state: {:#?}", state.current_state, state.error_state, self.pipeline.state(None));
+        state.error_state = ErrorState::NetworkError;
+        
+        // at first disable watchdog
+
+        state.watchdog.set_property("timeout", &0i32);
+        //if CurState::HandleCurlError == state.pl_state {
+        //    info!("triggered error from bus, but state is already in handleError mode, skipping");
+        //    return Ok(())
+        //}
+
+        state.error_state = ErrorState::NetworkError;
+
+
+        if state.has_mixer_connected {
+            self.mixer.release_pad(state.bin_src.peer().unwrap());
+            state.has_mixer_connected = false;
         }
+        
+
 
         drop(state);
+        sleep_ms!(5000);
 
-        self.handle_error()?;
+        let weak_self = self.downgrade();
+        self.bin.call_async(move |_bin| {
+            
+            // hier sollten wir erstmal bin auf paused // null setzen
+            //let state_change_result = bin.set_state(gst::State::Null);
+            //if let Ok(result) = state_change_result {
+            //    if result == gst::StateChangeSuccess::Success {
+            //        info!("on triggered_error_from_bus, before start again, we set the bin state successfull to Null");
+            //    } else {
+            //        warn!("on triggered_error_from_bus, before start again, we not successfull set state to Null :(");
+            //    }
+            //}
+            
+            let this = upgrade_weak!(weak_self);
+
+
+
+
+            info!("try async restart...");
+            if let Err(e) = this.start(None) {
+                warn!("error on retry : {}", e)
+            }
+        });
+        //self.handle_error()?;
 
         Ok(())
     }
@@ -149,109 +196,69 @@ impl Fallback {
 
         let mut state = self.state.lock();
 
-        info!("got an error from watchdog.. what want we to do? curState: {:?}", state.pl_state);
-        if CurState::PlaySource == state.pl_state {
-            state.pl_state = CurState::HandleWatchdogError;
-            drop(state);
-            warn!("we should normally playing a stream, so the watchdog indicates that there is something wrong... we trigger handle_error with State set to Retry");
-            
-            let _ = self.handle_error();
-            
+        info!("triggered an error from watchdog, current_state: {:?}, error_state: {:?} pipeline state: {:#?}", state.current_state, state.error_state, self.pipeline.state(None));
+    
+        // at first disable watchdog
+        state.watchdog.set_property("timeout", &0i32);
+        state.error_state = ErrorState::WatchdogError;
+        state.current_state = CurrentState::Retry;
 
-            return Ok(())
+        if state.has_mixer_connected {
+            self.mixer.release_pad(state.bin_src.peer().unwrap());
+            state.has_mixer_connected = false;
         }
-
-        if CurState::WaitForDecoderSrcPad == state.pl_state {
-            drop(state);
-            warn!("okay, watchdog gets triggered and we wait for the decodersrcpad... let us try");
-            let _ = self.handle_error();
-        }
-
-        Err(anyhow!("Not in PlaySource State, Watchdog error can not triggered"))
-    }
-
-
-    fn handle_error(&self) -> Result<()> {
-        let mut state = self.state.lock();
-        let pl_state = &state.pl_state;
-
-
-        let stop_before_start = match pl_state {
-            CurState::PlaySource => {
-                warn!("handling error while in playing mode");
-                
-                if state.source.is_none() {
-                    info!("source is non, so we directly want to start playback again");
-                    false
-                } else {
-                    true
-                }
-            },
-
-            CurState::WaitForDecoderSrcPad => {
-                
-                warn!("handling error while wait for decoder src pad (wait 4secs before resume)");
-
-
-                sleep_ms!(2000);
-                // this means we got an error on typefinding.. eventually the uri is wrong,
-                // so we try to set a probe pad
-                if let Some(source) = &state.source {
-                    // there should no error on remove source from bin
-                    let _ = self.bin.remove(source);
-                    state.source = None;
-                    
-                }
-
-                false
-            },
-            CurState::HandleWatchdogError => {
-                info!("HandleWatchdogError, try restart");
-                false
-            },
-            CurState::Retry => {
-                info!("ready to start stream again");
-                false
-            },
-            CurState::HandleError => {
-                // if handle error is called while in handleerror state
-                warn!("we are already in handleError State... what next?");
-
-                if let Some(source) = &state.source {
-                    let _ = self.bin.remove(source);
-                    state.source = None;
-                }
-
-                false
-            }
-            e => {
-                return Err(anyhow!("could not handle error, state is unkown: {:?}", e))
-            },
-        };
-
-        state.pl_state = CurState::HandleError;
+        
         drop(state);
 
-        //let self_weak = self.downgrade();
+        sleep_ms!(2000);
 
-        if stop_before_start {
-            info!("error_handling: stop playback before restart");
-            if let Err(e) = self.stop_playback() {
-                warn!("got a problem while stop playback on error handling mode : {}", e);
-            }
-        } else {
-            info!("error_handling: we want to restart now");
-            if let Err(e) = self.start(None) {
+        let weak_self = self.downgrade();
+
+        self.bin.call_async(move |_bin| {
+
+            // hier sollten wir erstmal bin auf paused // null setzen
+            //let state_change_result = bin.set_state(gst::State::Null);
+            //if let Ok(result) = state_change_result {
+            //    if result == gst::StateChangeSuccess::Success {
+            //        info!("on triggered_watchdog, before start again, we set the bin state successfull to Null");
+            //    } else {
+            //        warn!("on triggered_watchdog, before start again, we not successfull set state to Null :(");
+            //    }
+            //}
+            
+            let this = upgrade_weak!(weak_self);
+
+            info!("try async restart...");
+            if let Err(e) = this.start(None) {
                 warn!("error on retry : {}", e)
             }
-        }
-
+        });
         
+        
+        //let _ = self.handle_error();
         Ok(())
 
-
+        //if CurState::WaitForDecoderSrcPad == state.pl_state {
+        //    drop(state);
+        //    warn!("okay, watchdog gets triggered and we wait for the decodersrcpad... let us try");
+        //    let _ = self.handle_error();
+        //}
+        //Err(anyhow!("Not in PlaySource State, Watchdog error can not triggered"))
     }
 
+
+    
+
+
+    fn set_watchdog(&self, enabled: bool) {
+        let state = self.state.lock();
+        if enabled {
+            state.watchdog.set_property("timeout", &4000i32);
+        } else {
+            state.watchdog.set_property("timeout", &0i32);
+        }
+        drop(state);
+    }
     
 
     pub fn stop_playback(&self) -> Result<()> {
@@ -266,8 +273,6 @@ impl Fallback {
                 return Err(anyhow!("cannot remove stream cause Sourcepad is empty"));
             }
 
-            info!("current source state: {:#?}", source.state(None));
- 
             // we crate a probe for triggering an EOS and call this callback
             let sourcepad = sourcepad.unwrap();
             let self_downgrade = self.downgrade();
@@ -289,18 +294,18 @@ impl Fallback {
 
         // after creating the probe we send eos
         info!("send eos event task_state: {:#?}, last_flow_result: {:#?}", convertsink.task_state(), convertsink.last_flow_result());
-        let re = convertsink.send_event(gst::event::Eos::new());
-        info!("result of send event is {}", re);
+        let _re = convertsink.send_event(gst::event::Eos::new());
         //convertsink.push_event(gst::event::Eos::new());
         
         Ok(())
     }
 
     pub fn start(&self, uri: Option<&str>) -> Result<()> {
+        info!("called start");
         let mut state = self.state.lock();
         let source = state.source.clone();
 
-        if let Some(uri) = uri {
+        let uri_changed = if let Some(uri) = uri {
             
             let change_uri = if let Some(current_uri) = &state.uri {
                 if current_uri == uri {
@@ -315,26 +320,53 @@ impl Fallback {
 
             if change_uri {
                 state.uri = Some(uri.to_string());
+                state.current_state = CurrentState::ChangeUri;
             }
-            
-        }
+
+            change_uri
+        } else {
+            false
+        };
 
         if state.uri.is_none() {
             return Err(anyhow!("cannot start new cause of: Uri is unset"));
         }
 
+        if uri_changed == false && uri.is_some() {
+            info!("in start / change uri function we stop, cause uri_changed is false and uri is Some");
+            return Err(anyhow!("cannot start new cause of: Uri is not changed"));
+        }
+
+        // hier sollten wir erstmal bin auf paused // null setzen
+        //let state_change_result = self.bin.set_state(gst::State::Null);
+        //if let Ok(result) = state_change_result {
+        //    if result == gst::StateChangeSuccess::Success {
+        //        info!("on play, right before manipulation, we set the bin state successfull to Null");
+        //    } else {
+        //        warn!("on play, rightt before manipulation, we not successfull set state to Null :(");
+        //    }
+        //}
+
+
         // wir gehen hier davon aus das es keine source gibt
         if source.is_some() {
-            
-            info!("start: source is not empty, remove source from bin and set to None. Than wait 200 ms and continue");
 
+            
             if let Some(source) = &state.source {
+                info!("start: source is not empty, remove source from bin and set to None. wait 300ms and the continue");
+
                 let _ = self.bin.remove(source);
+                sleep_ms!(150);
+                //source.set_state(gst::State::Null);
+                
+                drop(source);
                 state.source = None;
+
+
+                sleep_ms!(750);
+
             }
-            //drop(state);
-            sleep_ms!(200);
-            //return self.handle_error();
+
         }
 
         
@@ -342,7 +374,7 @@ impl Fallback {
         
         let source = make_element("uridecodebin", None)?;
         info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
-        info!("current playback state is {:?}", self.pipeline.state(None));
+        //info!("current playback state is {:?}", self.pipeline.state(None));
 
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
         source.set_property("use-buffering", &false);
@@ -357,16 +389,12 @@ impl Fallback {
         let s = self.clone();
         let self_downgrade = s.downgrade();
 
-
-
         source.connect_pad_added(move |src, pad| {
             let fb = upgrade_weak!(self_downgrade);
             info!("Source decoder name is: {:?}", src.name());
             if None == src.parent() {
-                warn!(" source is not connected... skip this part");
                 return
             }
-            info!("source_connect_pad_added_parent: {:#?}", src.parent().unwrap().name());
             if let Err(e) = fb.pad_added_cb(pad) {
                 warn!("error on add pad from decoder: {}", e);
 
@@ -378,32 +406,41 @@ impl Fallback {
                         state.source = None;
                     }
                 }
-                
+            } else {
+                info!("enable, watchdog");
+                fb.set_watchdog(true);
             }
         });
 
-
+        sleep_ms!(2000);
         self.bin.add(&source)?;
-        sleep_ms!(250);
-        
-        let cloned_source = source.clone();
-        state.pl_state = CurState::WaitForDecoderSrcPad;
-        state.source = Some(source);
 
+        source.sync_state_with_parent()?;
+        self.bin.sync_state_with_parent()?;
+
+        state.current_state = CurrentState::WaitForDecoderSrcPad;
+        state.source = Some(source);
         drop(state);
+        
+
+        //self.set_watchdog(true);
 
         // if running time...
-        sleep_ms!(250);
-        info!("set states to playing");
-        cloned_source.call_async(|source| {
-            let _ = source.set_state(gst::State::Playing);
-        });
-        self.pipeline.call_async(|pipeline| {
-            info!("set pipeline to playing");
-            let _ = pipeline.set_state(gst::State::Playing);
-        });
+        info!("set source and pipeline to playing to playing");
         
-        info!("current playback state 2 is {:?}", self.pipeline.state(None));
+        sleep_ms!(100);
+
+        info!("current state: {:#?}", self.pipeline.state(None));
+        let state_change_result = self.pipeline.set_state(gst::State::Playing);
+        if let Ok(result) = state_change_result {
+            if result == gst::StateChangeSuccess::Success {
+                let mut state = self.state.lock();
+                state.error_state = ErrorState::None;
+                drop(state);
+            }
+        }
+
+        info!("current playback state after setting state to playing is {:?}", self.pipeline.state(None));
 
         Ok(())
     }
@@ -441,27 +478,9 @@ impl Fallback {
                 state.has_mixer_connected = false;
                 state.source = None;
                 state.source_pad = None;
-
-                let current_state = state.pl_state.clone();
+  
                 drop(state);
 
-                if CurState::HandleError == current_state {
-                    {
-                        let mut state_guard = self.state.lock();
-                        state_guard.pl_state = CurState::Retry;
-                    }
-
-                    sleep_ms!(1000);
-                    if let Err(e) = self.handle_error() {
-                        warn!("error on call handle_error inside eos cb : {}", e)
-                    }
-
-                } else {
-                    {
-                        let mut state_guard = self.state.lock();
-                        state_guard.pl_state = CurState::DoNothing;
-                    }
-                }
                 
                 return Ok(gst::PadProbeReturn::Drop)
             }
@@ -478,7 +497,6 @@ impl Fallback {
 
         let converter_bin_parent = state.converter_bin.parent();
         info!("converter_bin_parent is: {:#?}", converter_bin_parent.unwrap().name());
-
         info!("converter sink is: {:#?}", converter_sink.name());
         info!("pad name is is: {:#?}", pad.name());
 
@@ -504,10 +522,11 @@ impl Fallback {
 
         // if everythink works well, we add the sourcepad to state
         state.source_pad = Some(pad.clone());
-        sleep_ms!(500);
+        sleep_ms!(200);
         info!("Pad Added, set State to PlaySource");
-        state.pl_state = CurState::PlaySource;
+        state.current_state = CurrentState::PlaySource;
         drop(state);
+        info!("dropped state");
 
         Ok(())
     }
@@ -515,7 +534,7 @@ impl Fallback {
 }
 
 
-fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bin> {
+fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<(gst::Bin, gst::Element)> {
 
 
     let caps = gst::Caps::builder("audio/x-raw")
@@ -527,9 +546,9 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     let mut elements = Vec::new();
 
     let watchdog = make_element("watchdog", name.and_then(|n: &str| Some( format!("{}_watchdog", n)) ).as_ref().map(|x| &**x) )?;
-    watchdog.set_property("timeout", &13000i32);
+    watchdog.set_property("timeout", &0i32);
     bin.add(&watchdog)?;
-    elements.push(watchdog);
+    elements.push(watchdog.clone());
 
 
     let resampler = make_element("audioresample", name.and_then(|n: &str| Some( format!("{}_audioresample", n)) ).as_ref().map(|x| &**x) )?;
@@ -571,7 +590,7 @@ fn create_converter_bin(name: Option<&str>, rate: Option<i32>) -> Result<gst::Bi
     let sink_pad = gst::GhostPad::with_target(Some("sink"), &first_element.static_pad("sink").unwrap())?;
     bin.add_pad(&sink_pad)?;
 
-    Ok(bin)
+    Ok((bin, watchdog))
 }
 
 

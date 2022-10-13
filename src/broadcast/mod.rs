@@ -8,6 +8,7 @@ mod volume;
 mod whitenoise;
 mod methods;
 mod fallback;
+//mod fallback2;
 
 pub use builder::Builder;
 
@@ -306,6 +307,8 @@ impl Broadcast {
                         Some(src) => src,
                     };
 
+                    warn!("error from bus {:#?} -> {:#?}",err ,src);
+
                     if src.has_as_ancestor(&broadcast.network_bin) {
                         warn!("network communication error {:#?}", err);
 
@@ -329,29 +332,16 @@ impl Broadcast {
 
                     if src.name() == "fallbackconvertbin_watchdog" {
                         //warn!("watchdog error {:#?}", err);
-                        if broadcast.fallback.triggered_watchdog().is_ok() {
-                            broadcast.pipeline.call_async(|pipeline| {
-                                warn!("watchdog triggered error, so we restart pipeline");
-                                sleep_ms!(400);
-                                let _ = pipeline.set_state(gst::State::Null);
-                                sleep_ms!(200);
-                                let _ = pipeline.set_state(gst::State::Playing);
-                            })
-                        }
+                        let _ = broadcast.fallback.triggered_watchdog();
                         return gst::BusSyncReply::Pass;
                     }
 
 
                     if src.has_as_ancestor(&broadcast.fallback.bin) {
-                        warn!("error comes from fallback");
+                        warn!("error comes from fallback (Network, but not watchdog)");
                         let _ = broadcast.fallback.triggered_error_from_bus();
                         return gst::BusSyncReply::Pass;
                     }
-
-
-                    warn!("error comes from: {:?}", src.name());
-
-
                 }
                 _ => (),
             };
