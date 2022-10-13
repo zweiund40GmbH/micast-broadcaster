@@ -181,7 +181,7 @@ impl PlaybackClient {
                 info!("link newley created pad {} to rtpdepayload sink", pad.name());
                 pad.link(&decoder_sink).expect("link of rtpbin pad to rtpdepayload sink should work");
     
-                pbc.pipeline.set_start_time(gst::ClockTime::NONE);
+                //pbc.pipeline.set_start_time(gst::ClockTime::NONE);
     
             }
 
@@ -226,10 +226,11 @@ impl PlaybackClient {
                     warn!("receive an error from {:?}", src.name());
 
                     if src.name() == "rtp_eingang" {
-                        let _ = pipeline.set_state(gst::State::Null);
+                        
 
                         let weak_pipeline = pipeline.downgrade();
                         glib::timeout_add(std::time::Duration::from_secs(5), move || {
+
                             let pipeline = match weak_pipeline.upgrade() {
                                 Some(pipeline) => pipeline,
                                 None => {
@@ -237,10 +238,18 @@ impl PlaybackClient {
                                     return Continue(true)
                                 }
                             };
+
+                            pipeline.call_async(move |pipeline| {
+                                let _ = pipeline.set_state(gst::State::Null);
+                                sleep_ms!(200);
+                                if let Err(e) = pipeline.set_state(gst::State::Playing) {
+                                    warn!("error on call start pipeline inside rtp_eingang error : {}", e)
+                                }
+
+                                //pipeline.set_start_time(gst::ClockTime::NONE);
+                            });
                  
-                            if let Err(e) = pipeline.set_state(gst::State::Playing) {
-                                warn!("error on call start pipeline inside rtp_eingang error : {}", e)
-                            }
+                            
                 
                             Continue(false)
                         });
@@ -265,8 +274,15 @@ impl PlaybackClient {
                 MessageView::ClockLost(_) => {
                     warn!("player - ClockLost... get a new clock");
                     // Get a new clock.
-                    let _ = pipeline.set_state(gst::State::Paused);
-                    let _ = pipeline.set_state(gst::State::Playing);
+                    
+                    pipeline.call_async(move |pipeline| {
+                        let _ = pipeline.set_state(gst::State::Null);
+                        sleep_ms!(200);
+                        if let Err(e) = pipeline.set_state(gst::State::Playing) {
+                            warn!("error on call start pipeline after clock sync error : {}", e)
+                        }
+                        //pipeline.set_start_time(gst::ClockTime::NONE);
+                    });
                 }
     
                 _ => (),
@@ -308,7 +324,7 @@ impl PlaybackClient {
             
         }
         //let _ = self.clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
 
@@ -353,7 +369,7 @@ impl PlaybackClient {
             let this = upgrade_weak!(weak_self);
 
             pipeline.set_state(gst::State::Null);
-            
+
             let mut state_guard = this.state.lock();
             let clock = create_net_clock(&pipeline, &clock_ip, this.clock_port).unwrap();
             state_guard.clock = clock;
