@@ -331,6 +331,10 @@ impl PlaybackClient {
     /// 
     pub fn change_clock_and_server(&self, clock_ip: &str, server: &str) -> Result<(), anyhow::Error> {
  
+
+        
+
+
         let inner_state = self.state.lock();
         if &inner_state.current_clock_ip == clock_ip && &inner_state.current_server_ip == server {
             info!("player - do not change ip, cause ip is not changed {} {}", clock_ip, server);
@@ -338,56 +342,75 @@ impl PlaybackClient {
         }
         drop(inner_state);
 
-        info!("player - change_clock_and_server - stop playback");
-        self.stop();
+        //info!("player - change_clock_and_server - stop playback");
+        //self.stop();
         
-        let mut state_guard = self.state.lock();
-        let clock = create_net_clock(&self.pipeline, clock_ip, self.clock_port)?;
-        state_guard.clock = clock;
-        drop(state_guard);
+        let weak_self = self.downgrade();
+        let server = server.to_string();
+        let clock_ip = clock_ip.to_string();
+        self.pipeline.call_async(move |pipeline| {
 
+            let this = upgrade_weak!(weak_self);
+
+            pipeline.set_state(gst::State::Null);
+            
+            let mut state_guard = this.state.lock();
+            let clock = create_net_clock(&pipeline, &clock_ip, this.clock_port).unwrap();
+            state_guard.clock = clock;
+            drop(state_guard);
+
+            //debug!("wait 5 seconds");
+            //sleep_ms!(15000);
+
+            
+            
+
+            let rtcp_eingang = match pipeline.by_name("rtcp_eingang") {
+                Some(elem) => elem,
+                None => { 
+                    return
+                    //return Err(anyhow!("rtp_sink not found"))
+                }
+            };
+
+            let rtcp_senden = match pipeline.by_name("rtcp_senden"){
+                Some(elem) => elem,
+                None => { 
+                    return
+                    //return Err(anyhow!("rtcp_sink not found"))
+                }
+            };
+
+            let rtp_eingang = match pipeline.by_name("rtp_eingang"){
+                Some(elem) => elem,
+                None => { 
+                    return
+                    //return Err(anyhow!("rtcp_src not found"))
+                }
+            };
+
+            info!("player - change_clock_and_server - rtp_eingang changed");
+
+            rtcp_eingang.try_set_property( "address", &server);
+            rtcp_senden.try_set_property("host", &server);
+            rtp_eingang.try_set_property( "address", &server);
+            
+
+            let mut state_guard = this.state.lock();
+            state_guard.current_server_ip = server.to_string();
+            state_guard.current_clock_ip = clock_ip.to_string();
+            drop(state_guard);
+
+
+            sleep_ms!(200);
+
+            info!("player - change_clock_and_server - now start player again");
+            //self.start();
+            pipeline.set_state(gst::State::Playing);
+            info!("player - change_clock_and_server - started");
+
+        });
         
-
-        let rtcp_eingang = match self.pipeline.by_name("rtcp_eingang") {
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtp_sink not found"))
-            }
-        };
-
-        let rtcp_senden = match self.pipeline.by_name("rtcp_senden"){
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtcp_sink not found"))
-            }
-        };
-
-        let rtp_eingang = match self.pipeline.by_name("rtp_eingang"){
-            Some(elem) => elem,
-            None => { 
-                return Err(anyhow!("rtcp_src not found"))
-            }
-        };
-
-        info!("player - change_clock_and_server - rtp_eingang changed");
-
-        rtcp_eingang.try_set_property( "address", server)?;
-        rtcp_senden.try_set_property("host", server)?;
-        rtp_eingang.try_set_property( "address", server)?;
-        
-
-        let mut state_guard = self.state.lock();
-        state_guard.current_server_ip = server.to_string();
-        state_guard.current_clock_ip = clock_ip.to_string();
-        drop(state_guard);
-
-
-        sleep_ms!(200);
-
-        info!("player - change_clock_and_server - now start player again");
-        self.start();
-        
-        info!("player - change_clock_and_server - started");
 
 
         Ok(())
@@ -600,7 +623,7 @@ fn create_net_clock(pipeline: &gst::Pipeline, address: &str, port: i32) -> Resul
         glib::Continue(true)
     })
     .expect("Failed to add bus watch");*/
-
+    
     pipeline.use_clock(Some(&clock));
 
     Ok(clock)

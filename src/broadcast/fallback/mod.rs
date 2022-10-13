@@ -377,7 +377,7 @@ impl Fallback {
         //info!("current playback state is {:?}", self.pipeline.state(None));
 
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
-        source.set_property("use-buffering", &false);
+        source.set_property("use-buffering", &true);
 
         //source.connect("source-setup", false, |r| {
         //    let ins = r[1].get::<gst::Element>().unwrap();
