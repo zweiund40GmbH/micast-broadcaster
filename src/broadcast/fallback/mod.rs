@@ -139,19 +139,16 @@ impl Fallback {
     pub fn triggered_error_from_bus(&self) -> Result<()> {
         
         let mut state = self.state.lock();
-        info!("triggered an error from bus, current_state: {:?}, error_state: {:?} pipeline state: {:#?}", state.current_state, state.error_state, self.pipeline.state(None));
-        state.error_state = ErrorState::NetworkError;
+        info!("triggered an error from bus, current_state: {:?}, error_state: {:?} pipeline state: {:?}", state.current_state, state.error_state, self.pipeline.state(None));
         
-        // at first disable watchdog
-
-        state.watchdog.set_property("timeout", &0i32);
-        //if CurState::HandleCurlError == state.pl_state {
-        //    info!("triggered error from bus, but state is already in handleError mode, skipping");
-        //    return Ok(())
-        //}
-
+        if state.error_state != ErrorState::None {
+            info!("no error handling, cause we already inside of an error handling");
+            return Ok(());
+        }
+        
         state.error_state = ErrorState::NetworkError;
-
+        state.current_state = CurrentState::Retry;
+        state.watchdog.set_property("timeout", &0i32);
 
         if state.has_mixer_connected {
             self.mixer.release_pad(state.bin_src.peer().unwrap());
@@ -161,7 +158,7 @@ impl Fallback {
 
 
         drop(state);
-        sleep_ms!(5000);
+        sleep_ms!(15000);
 
         let weak_self = self.downgrade();
         self.bin.call_async(move |_bin| {
@@ -197,7 +194,11 @@ impl Fallback {
         let mut state = self.state.lock();
 
         info!("triggered an error from watchdog, current_state: {:?}, error_state: {:?} pipeline state: {:#?}", state.current_state, state.error_state, self.pipeline.state(None));
-    
+        
+        if state.error_state != ErrorState::None {
+            info!("no error handling, cause we already inside of an error handling");
+            return Ok(());
+        }
         // at first disable watchdog
         state.watchdog.set_property("timeout", &0i32);
         state.error_state = ErrorState::WatchdogError;
@@ -210,7 +211,7 @@ impl Fallback {
         
         drop(state);
 
-        sleep_ms!(2000);
+        sleep_ms!(15000);
 
         let weak_self = self.downgrade();
 
@@ -305,6 +306,7 @@ impl Fallback {
         let mut state = self.state.lock();
         let source = state.source.clone();
 
+        info!("weeiter");
         let uri_changed = if let Some(uri) = uri {
             
             let change_uri = if let Some(current_uri) = &state.uri {
@@ -379,6 +381,10 @@ impl Fallback {
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
         source.set_property("use-buffering", &true);
 
+        state.current_state = CurrentState::WaitForDecoderSrcPad;
+        state.error_state = ErrorState::None;
+        state.source = Some(source.clone());
+        drop(state);
         //source.connect("source-setup", false, |r| {
         //    let ins = r[1].get::<gst::Element>().unwrap();
         //    ins.set_property("proxy", "http://127.0.0.1:9090");
@@ -412,35 +418,33 @@ impl Fallback {
             }
         });
 
-        sleep_ms!(2000);
         self.bin.add(&source)?;
 
         source.sync_state_with_parent()?;
         self.bin.sync_state_with_parent()?;
 
-        state.current_state = CurrentState::WaitForDecoderSrcPad;
-        state.source = Some(source);
-        drop(state);
-        
+        //// ENABLE WATCHDOG!!!
 
-        //self.set_watchdog(true);
 
-        // if running time...
-        info!("set source and pipeline to playing to playing");
-        
         sleep_ms!(100);
 
-        info!("current state: {:#?}", self.pipeline.state(None));
-        let state_change_result = self.pipeline.set_state(gst::State::Playing);
-        if let Ok(result) = state_change_result {
-            if result == gst::StateChangeSuccess::Success {
-                let mut state = self.state.lock();
-                state.error_state = ErrorState::None;
-                drop(state);
+        info!("play: current state: {:?}", self.pipeline.state(None));
+        
+        let (_r, current, _next) = self.pipeline.state(None);
+        if current != gst::State::Playing {
+            let state_change_result = self.pipeline.set_state(gst::State::Playing);
+            if let Ok(result) = state_change_result {
+                if result == gst::StateChangeSuccess::Success {
+                    let mut state = self.state.lock();
+                    state.error_state = ErrorState::None;
+                    drop(state);
+                }
             }
+        } else {
+            let mut state = self.state.lock();
+            state.error_state = ErrorState::None;
+            drop(state);
         }
-
-        info!("current playback state after setting state to playing is {:?}", self.pipeline.state(None));
 
         Ok(())
     }
@@ -492,20 +496,14 @@ impl Fallback {
 
 
     fn pad_added_cb(&self, pad: &gst::Pad) -> Result<()> {
-        let mut state = self.state.lock();
+        let state = self.state.lock();
         let converter_sink = state.converter_bin.static_pad("sink").unwrap();
+        drop(state);
 
-        let converter_bin_parent = state.converter_bin.parent();
-        info!("converter_bin_parent is: {:#?}", converter_bin_parent.unwrap().name());
         info!("converter sink is: {:#?}", converter_sink.name());
         info!("pad name is is: {:#?}", pad.name());
 
         pad.link(&converter_sink)?;
-
-        /*
-        let running_time = self.running_time.read();
-        pad.set_offset(running_time.nseconds() as i64);
-        */
 
         if let Some(running_time) = self.pipeline.current_running_time() {
             pad.set_offset(running_time.nseconds() as i64);
@@ -514,19 +512,19 @@ impl Fallback {
         }
         
 
-        if !state.has_mixer_connected {
-            info!("has no mixer connected, connect new one");
-            self.mixer.connect_new_sink(&state.bin_src)?;
-            state.has_mixer_connected = true;
-        }
+        {
+            let mut state = self.state.lock();
+            if !state.has_mixer_connected {
+                info!("has no mixer connected, connect new one");
+                self.mixer.connect_new_sink(&state.bin_src)?;
+                state.has_mixer_connected = true;
+            }
 
-        // if everythink works well, we add the sourcepad to state
-        state.source_pad = Some(pad.clone());
-        sleep_ms!(200);
-        info!("Pad Added, set State to PlaySource");
-        state.current_state = CurrentState::PlaySource;
-        drop(state);
-        info!("dropped state");
+            state.source_pad = Some(pad.clone());
+            state.current_state = CurrentState::PlaySource;
+            drop(state);
+        }
+        
 
         Ok(())
     }
