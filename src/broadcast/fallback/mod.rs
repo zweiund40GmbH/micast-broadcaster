@@ -415,7 +415,7 @@ impl Fallback {
             } else {
                 info!("connect_pad_added: enable watchdog");
                 fb.set_watchdog(true);
-                info!("connect_pad_added: current state: {:?}", fb.pipeline.state(None));
+                info!("connect_pad_added: current state: {:?}", fb.pipeline.state(Some(gst::ClockTime::from_seconds(1))));
             }
         });
 
