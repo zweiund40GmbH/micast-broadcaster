@@ -413,8 +413,9 @@ impl Fallback {
                     }
                 }
             } else {
-                info!("enable, watchdog");
+                info!("connect_pad_added: enable watchdog");
                 fb.set_watchdog(true);
+                info!("connect_pad_added: current state: {:?}", fb.pipeline.state(None));
             }
         });
 
@@ -432,14 +433,20 @@ impl Fallback {
         
         let (_r, current, _next) = self.pipeline.state(None);
         if current != gst::State::Playing {
+            info!("start: state is not playing, try to set state to playing");
             let state_change_result = self.pipeline.set_state(gst::State::Playing);
             if let Ok(result) = state_change_result {
                 if result == gst::StateChangeSuccess::Success {
+                    debug!("start: state is set to playing");
                     let mut state = self.state.lock();
                     state.error_state = ErrorState::None;
                     drop(state);
+                } else {
+                    debug!("start: could not set state to playing!");
+
                 }
             }
+            
         } else {
             let mut state = self.state.lock();
             state.error_state = ErrorState::None;
