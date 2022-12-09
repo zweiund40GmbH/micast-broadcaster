@@ -285,116 +285,74 @@ impl Fallback {
             info!("in start / change uri function we stop, cause uri_changed is false and uri is Some");
             return Err(anyhow!("cannot start new cause of: Uri is not changed"));
         }
-
-        // hier sollten wir erstmal bin auf paused // null setzen
-        //let state_change_result = self.bin.set_state(gst::State::Null);
-        //if let Ok(result) = state_change_result {
-        //    if result == gst::StateChangeSuccess::Success {
-        //        info!("on play, right before manipulation, we set the bin state successfull to Null");
-        //    } else {
-        //        warn!("on play, rightt before manipulation, we not successfull set state to Null :(");
-        //    }
-        //}
-
-
-        // wir gehen hier davon aus das es keine source gibt
-        if source.is_some() {
-
-            
-            if let Some(source) = &state.source {
-                info!("start: source is not empty, remove source from bin and set to None. wait 300ms and the continue");
-
-                let _ = self.bin.remove(source);
-                sleep_ms!(150);
-                //source.set_state(gst::State::Null);
-                
-                drop(source);
-                state.source = None;
-
-
-                sleep_ms!(750);
-
-            }
-
-        }
-
-        
-
-        
-        let source = make_element("uridecodebin", None)?;
-        info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
-        //info!("current playback state is {:?}", self.pipeline.state(None));
-
-        source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
-        //source.set_property("use-buffering", &true);
-
-        state.current_state = CurrentState::WaitForDecoderSrcPad;
-        state.error_state = ErrorState::None;
-        state.source = Some(source.clone());
         drop(state);
-        //source.connect("source-setup", false, |r| {
-        //    let ins = r[1].get::<gst::Element>().unwrap();
-        //    ins.set_property("proxy", "http://127.0.0.1:9090");
-        //
-        //    None
-        //});
+        
+        let weak_fallback = self.downgrade();
+        glib::idle_add(move || {
+            info!("inside idle_add, start playback");
+            let this = upgrade_weak!(weak_fallback, Continue(false));
+            let mut state = this.state.lock();
+            // wir gehen hier davon aus das es keine source gibt
+            if state.source.is_some() {
+                state.watchdog.set_property("timeout", &0i32);
 
-        let s = self.clone();
-        let self_downgrade = s.downgrade();
+                let source = state.source.as_ref();
+                if let Some(unwraped_source) = source {
+                    debug!("stop source and remove source");
+                    let _ = unwraped_source.set_state(gst::State::Null);
+                    
+                    debug!("reset bin, set bin state to null");
+                    let _ = this.bin.set_state(gst::State::Null);
+                    
+                    let _ = this.bin.remove(unwraped_source);
+                    state.source = None;
+                }
 
-        source.connect_pad_added(move |src, pad| {
-            let fb = upgrade_weak!(self_downgrade);
-            info!("Source decoder name is: {:?}", src.name());
-            if None == src.parent() {
-                return
+                debug!("remove source from mixer if connected");
+                if state.has_mixer_connected {
+                    this.mixer.release_pad(state.bin_src.peer().unwrap());
+                    state.has_mixer_connected = false;
+                }
+
+
+                debug!("reset pipeline, set pipeline state to null");
+                let _ = this.pipeline.set_state(gst::State::Null);
+                let _ = this.pipeline.set_state(gst::State::Ready);
+                let _ = this.pipeline.set_state(gst::State::Playing);
+                // remove source
+                sleep_ms!(2000);
+
             }
-            if let Err(e) = fb.pad_added_cb(pad) {
-                warn!("error on add pad from decoder: {}", e);
+            drop(state);
 
-                {
-                    debug!("remove source from state, cause of error");
-                    let mut state = fb.state.lock();
-                    if let Some(source) = &state.source {
-                        let _ = fb.bin.remove(source);
-                        state.source = None;
+            this.simple_start().expect("start playback with new uri falied");
+
+            info!("play: current state: {:?}", this.pipeline.state(None));
+            
+            let (_r, current, _next) = this.pipeline.state(None);
+            if current != gst::State::Playing {
+                info!("start: state is not playing, try to set state to playing");
+                let state_change_result = this.pipeline.set_state(gst::State::Playing);
+                if let Ok(result) = state_change_result {
+                    if result == gst::StateChangeSuccess::Success {
+                        debug!("start: state is set to playing");
+                        let mut state = this.state.lock();
+                        state.error_state = ErrorState::None;
+                        drop(state);
+                    } else {
+                        debug!("start: could not set state to playing!");
+
                     }
                 }
+                
             } else {
-                info!("connect_pad_added: enable watchdog");
-                fb.set_watchdog(true);
-                info!("connect_pad_added: current state: {:?}", fb.pipeline.state(Some(gst::ClockTime::from_seconds(1))));
+                let mut state = this.state.lock();
+                state.error_state = ErrorState::None;
+                drop(state);
             }
+
+            Continue(false)
         });
-
-        self.bin.add(&source)?;
-
-        source.sync_state_with_parent()?;
-        self.bin.sync_state_with_parent()?;
-
-
-        info!("play: current state: {:?}", self.pipeline.state(None));
-        
-        let (_r, current, _next) = self.pipeline.state(None);
-        if current != gst::State::Playing {
-            info!("start: state is not playing, try to set state to playing");
-            let state_change_result = self.pipeline.set_state(gst::State::Playing);
-            if let Ok(result) = state_change_result {
-                if result == gst::StateChangeSuccess::Success {
-                    debug!("start: state is set to playing");
-                    let mut state = self.state.lock();
-                    state.error_state = ErrorState::None;
-                    drop(state);
-                } else {
-                    debug!("start: could not set state to playing!");
-
-                }
-            }
-            
-        } else {
-            let mut state = self.state.lock();
-            state.error_state = ErrorState::None;
-            drop(state);
-        }
 
         Ok(())
     }

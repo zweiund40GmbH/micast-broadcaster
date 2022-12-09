@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .set_spot_volume(Some(0.7))
         .set_broadcast_volume(Some(0.0))
         .set_crossfade_time(Some(std::time::Duration::from_secs(1)))
-        .set_startup_output(broadcast::OutputMode::Network)
+        .set_startup_output(broadcast::OutputMode::Local(None))
         .build_server()?;
 
     broadcaster.set_scheduler(scheduler);
@@ -52,7 +52,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut bc_clone = broadcaster.clone();
     glib::timeout_add(std::time::Duration::from_secs(20), move || {
-        let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
+        //let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
+        bc_clone.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
+
         Continue(true)
     });
 

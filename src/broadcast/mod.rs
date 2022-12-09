@@ -773,17 +773,9 @@ impl Broadcast {
     /// 
     pub fn play(&self, uri: &str) -> Result<(), anyhow::Error> {
         
-        let weak_fallback = self.fallback.downgrade();
-        let cloned_uri = format!("{}", uri);
 
-        glib::idle_add(move || {
-            let fallback = upgrade_weak!(weak_fallback, Continue(false));
-            info!("start playing: {}", cloned_uri);
-            
-            fallback.start(Some(&cloned_uri)).expect("failed start playback for new uri");
-
-            Continue(false)
-        });
+        info!("start playing: {}", uri);
+        self.fallback.start(Some(uri))?;
 
         Ok(())
     }
