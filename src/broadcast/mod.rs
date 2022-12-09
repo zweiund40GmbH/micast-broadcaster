@@ -308,7 +308,7 @@ impl Broadcast {
         
         let broadcast_weak = broadcast.downgrade();
         bus.add_signal_watch();
-        bus.connect("message::eos", false, move |v| {
+        bus.connect("message::eos", false, move |_v| {
             warn!("received an eos message on bus");
             None
         });
@@ -572,7 +572,7 @@ impl Broadcast {
     /// 
     /// can dynamically switch output while playing
     /// 
-    pub fn switch_output(&mut self, new_output: OutputMode) -> Result<(), anyhow::Error> {
+    pub fn switch_output(&self, new_output: OutputMode) -> Result<(), anyhow::Error> {
 
         let mut current_output = self.current_output.lock();
         match &new_output {
