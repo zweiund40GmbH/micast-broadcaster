@@ -12,6 +12,7 @@ pub struct Builder {
     spot_volume: Option<f64>, 
     broadcast_volume: Option<f64>, 
     crossfade_time: Option<u64>,
+    startup_output: super::OutputMode,
 }
 
 
@@ -68,6 +69,11 @@ impl Builder {
         self
     }
 
+    pub fn set_startup_output(mut self, output: super::OutputMode) -> Self {
+        self.startup_output = output;
+        self
+    }
+
     /// # build the server
     pub fn build_server(&self) -> Result<super::Broadcast, anyhow::Error> {
         let ip = self.server_ip.clone();
@@ -81,6 +87,7 @@ impl Builder {
             self.spot_volume,
             self.broadcast_volume,
             self.crossfade_time,
+            self.startup_output.clone(),
         )
     }
 }

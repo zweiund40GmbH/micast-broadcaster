@@ -3,7 +3,7 @@
 use std::io::{copy, Cursor};
 
 use reqwest;
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_middleware::{ClientBuilder};
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 
 use std::fs::File;

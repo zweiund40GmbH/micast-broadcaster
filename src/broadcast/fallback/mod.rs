@@ -139,117 +139,63 @@ impl Fallback {
     pub fn triggered_error_from_bus(&self) -> Result<()> {
         
         let mut state = self.state.lock();
-        info!("triggered an error from bus, current_state: {:?}, error_state: {:?} pipeline state: {:?}", state.current_state, state.error_state, self.pipeline.state(None));
+        info!("triggered an error from bus");//, current_state: {:?}, error_state: {:?} pipeline state: {:?}", state.current_state, state.error_state, self.pipeline.state(None));
         
-        if state.error_state != ErrorState::None {
-            info!("no error handling, cause we already inside of an error handling");
-            return Ok(());
-        }
+        //if state.error_state != ErrorState::None {
+        //    info!("no error handling, cause we already inside of an error handling");
+        //    return Ok(());
+        //}
         
-        state.error_state = ErrorState::NetworkError;
-        state.current_state = CurrentState::Retry;
-        state.watchdog.set_property("timeout", &0i32);
-
-        if state.has_mixer_connected {
-            self.mixer.release_pad(state.bin_src.peer().unwrap());
-            state.has_mixer_connected = false;
-        }
-        
-
-
-        drop(state);
-        sleep_ms!(15000);
-
-        let weak_self = self.downgrade();
-        self.bin.call_async(move |_bin| {
-            
-            // hier sollten wir erstmal bin auf paused // null setzen
-            //let state_change_result = bin.set_state(gst::State::Null);
-            //if let Ok(result) = state_change_result {
-            //    if result == gst::StateChangeSuccess::Success {
-            //        info!("on triggered_error_from_bus, before start again, we set the bin state successfull to Null");
-            //    } else {
-            //        warn!("on triggered_error_from_bus, before start again, we not successfull set state to Null :(");
-            //    }
-            //}
-            
-            let this = upgrade_weak!(weak_self);
-
-
-
-
-            info!("try async restart...");
-            if let Err(e) = this.start(None) {
-                warn!("error on retry : {}", e)
-            }
-        });
-        //self.handle_error()?;
-
-        Ok(())
-    }
-
-    pub fn triggered_watchdog(&self) -> Result<()> {
-        
-
-        let mut state = self.state.lock();
-
-        info!("triggered an error from watchdog, current_state: {:?}, error_state: {:?} pipeline state: {:#?}", state.current_state, state.error_state, self.pipeline.state(None));
-        
-        if state.error_state != ErrorState::None {
-            info!("no error handling, cause we already inside of an error handling");
-            return Ok(());
-        }
-        // at first disable watchdog
-        state.watchdog.set_property("timeout", &0i32);
         state.error_state = ErrorState::WatchdogError;
         state.current_state = CurrentState::Retry;
-
-        if state.has_mixer_connected {
-            self.mixer.release_pad(state.bin_src.peer().unwrap());
-            state.has_mixer_connected = false;
-        }
-        
         drop(state);
 
-        sleep_ms!(15000);
+        let weak_fallback = self.downgrade();
+        glib::idle_add(move || {
+            let this = upgrade_weak!(weak_fallback, Continue(true));
 
-        let weak_self = self.downgrade();
+            debug!("disable watchdog!");
+            let mut state = this.state.lock();
+            state.watchdog.set_property("timeout", &0i32);
 
-        self.bin.call_async(move |_bin| {
 
-            // hier sollten wir erstmal bin auf paused // null setzen
-            //let state_change_result = bin.set_state(gst::State::Null);
-            //if let Ok(result) = state_change_result {
-            //    if result == gst::StateChangeSuccess::Success {
-            //        info!("on triggered_watchdog, before start again, we set the bin state successfull to Null");
-            //    } else {
-            //        warn!("on triggered_watchdog, before start again, we not successfull set state to Null :(");
-            //    }
-            //}
-            
-            let this = upgrade_weak!(weak_self);
 
-            info!("try async restart...");
-            if let Err(e) = this.start(None) {
-                warn!("error on retry : {}", e)
+            let source = state.source.as_ref();
+            if let Some(unwraped_source) = source {
+                debug!("stop source and remove source");
+                let _ = unwraped_source.set_state(gst::State::Null);
+                
+                debug!("reset bin, set bin state to null");
+                let _ = this.bin.set_state(gst::State::Null);
+                
+                let _ = this.bin.remove(unwraped_source);
+                state.source = None;
             }
+
+            debug!("remove source from mixer if connected");
+            if state.has_mixer_connected {
+                this.mixer.release_pad(state.bin_src.peer().unwrap());
+                state.has_mixer_connected = false;
+            }
+
+            drop(state);
+
+            debug!("reset pipeline, set pipeline state to null");
+            let _ = this.pipeline.set_state(gst::State::Null);
+            let _ = this.pipeline.set_state(gst::State::Ready);
+            let _ = this.pipeline.set_state(gst::State::Playing);
+            // remove source
+            sleep_ms!(2000);
+            
+
+            info!("try restart");
+            let _ = this.simple_start();
+
+            Continue(false)
         });
         
-        
-        //let _ = self.handle_error();
         Ok(())
-
-        //if CurState::WaitForDecoderSrcPad == state.pl_state {
-        //    drop(state);
-        //    warn!("okay, watchdog gets triggered and we wait for the decodersrcpad... let us try");
-        //    let _ = self.handle_error();
-        //}
-        //Err(anyhow!("Not in PlaySource State, Watchdog error can not triggered"))
     }
-
-
-    
-
 
     fn set_watchdog(&self, enabled: bool) {
         let state = self.state.lock();
@@ -262,12 +208,14 @@ impl Fallback {
     }
     
 
+    /// stop_playback
+    /// 
     pub fn stop_playback(&self) -> Result<()> {
         info!("stop current playback of stream");
 
         let state = self.state.lock();
 
-        if let Some(source) = state.source.as_ref() {
+        if state.source.is_some() {
             
             let sourcepad = state.source_pad.clone();
             if sourcepad.is_none() {
@@ -306,7 +254,6 @@ impl Fallback {
         let mut state = self.state.lock();
         let source = state.source.clone();
 
-        info!("weeiter");
         let uri_changed = if let Some(uri) = uri {
             
             let change_uri = if let Some(current_uri) = &state.uri {
@@ -379,7 +326,7 @@ impl Fallback {
         //info!("current playback state is {:?}", self.pipeline.state(None));
 
         source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
-        source.set_property("use-buffering", &true);
+        //source.set_property("use-buffering", &true);
 
         state.current_state = CurrentState::WaitForDecoderSrcPad;
         state.error_state = ErrorState::None;
@@ -424,10 +371,6 @@ impl Fallback {
         source.sync_state_with_parent()?;
         self.bin.sync_state_with_parent()?;
 
-        //// ENABLE WATCHDOG!!!
-
-
-        sleep_ms!(100);
 
         info!("play: current state: {:?}", self.pipeline.state(None));
         
@@ -455,6 +398,71 @@ impl Fallback {
 
         Ok(())
     }
+
+    fn simple_start(&self) -> Result<()> {
+        info!("called start");
+        let mut state = self.state.lock();
+
+        if state.uri.is_none() {
+            warn!("uri in state is not set!");
+            return Err(anyhow!("cannot start new cause of: Uri is unset"));
+        }
+
+        if state.source.is_some() {
+            warn!("cannot play source cause source is some!");
+            return Err(anyhow!("cannot play source because source is already some"));
+        }
+
+        let source = make_element("uridecodebin", None)?;
+        info!("add decoderbin {} uridecodebin name: {:?}", state.uri.as_ref().map(|x| &**x).unwrap(), source.name());
+        //info!("current playback state is {:?}", self.pipeline.state(None));
+
+        source.set_property("uri", state.uri.as_ref().map(|x| &**x).unwrap());
+        //source.set_property("use-buffering", &true);
+
+        state.current_state = CurrentState::WaitForDecoderSrcPad;
+        state.error_state = ErrorState::None;
+
+        let weak_source = source.downgrade();
+        state.source = Some(source);
+
+        drop(state);
+
+        //source.connect("source-setup", false, |r| {
+        //    let ins = r[1].get::<gst::Element>().unwrap();
+        //    ins.set_property("proxy", "http://127.0.0.1:9090");
+        //
+        //    None
+        //});
+
+        let s = self.clone();
+        let self_downgrade = s.downgrade();
+        let source = upgrade_weak!(weak_source, Err(anyhow!("cannot upgrad weak source")));
+
+        source.connect_pad_added(move |src, pad| {
+            let fb = upgrade_weak!(self_downgrade);
+            info!("Source decoder name is: {:?}", src.name());
+            if None == src.parent() {
+                return
+            }
+            if let Err(e) = fb.pad_added_cb(pad) {
+                warn!("error on add pad from decoder: {}", e);
+            } else {
+                info!("connect_pad_added: enable watchdog");
+                fb.set_watchdog(true);
+                info!("connect_pad_added: current state: {:?}", fb.pipeline.state(Some(gst::ClockTime::from_seconds(1))));
+            }
+        });
+
+        self.bin.add(&source)?;
+
+        source.sync_state_with_parent()?;
+        self.bin.sync_state_with_parent()?;
+        info!("play: current state: {:?}", self.pipeline.state(None));
+
+        Ok(())
+    }
+
 
     fn pad_eos_cb(&self, pad: &gst::Pad, info: &mut gst::PadProbeInfo) -> Result<gst::PadProbeReturn> {
         if let Some(gst::PadProbeData::Event(ref event)) = info.data {

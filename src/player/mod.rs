@@ -7,7 +7,7 @@ use anyhow::{anyhow};
 
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex };
 // playback client
 
 use crate::helpers::{make_element, upgrade_weak};

@@ -1,11 +1,13 @@
 use micast_broadcaster::{broadcast, scheduler::Scheduler };
 
+
+use gst::prelude::*;
+
 use chrono::prelude::*;
 
 use log::{debug, warn};
 
 use gst::glib;
-use glib::Continue;
 
 use std::error::Error;
 
@@ -29,9 +31,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         //.set_broadcast_ip("127.0.0.1")
         //.set_audiorate(44100 / 2)
         .set_audiorate(44100)
-        .set_spot_volume(Some(0.3))
-        .set_broadcast_volume(Some(0.5))
+        .set_spot_volume(Some(0.7))
+        .set_broadcast_volume(Some(0.0))
         .set_crossfade_time(Some(std::time::Duration::from_secs(1)))
+        .set_startup_output(broadcast::OutputMode::Network)
         .build_server()?;
 
     broadcaster.set_scheduler(scheduler);
@@ -47,11 +50,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // https://wdr-1live-live.sslcast.addradio.de/wdr/1live/live/mp3/128/stream.mp3
 
-    //let bc_clone = broadcaster.clone();
-    //glib::timeout_add(std::time::Duration::from_secs(60), move || {
-    //    let _ = bc_clone.play("http://icecast.radiobremen.de/rb/bremenvier/live/mp3/128/stream.mp3");     
-    //    Continue(true)
-    //});
+    let mut bc_clone = broadcaster.clone();
+    glib::timeout_add(std::time::Duration::from_secs(20), move || {
+        let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
+        Continue(true)
+    });
 
 
 

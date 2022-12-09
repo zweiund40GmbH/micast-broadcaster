@@ -126,6 +126,8 @@ impl Mixer {
 
         self.elements[0].release_request_pad(&real_pad);
 
+        self.elements[0].sync_state_with_parent();
+
         //if let Err(e) = self.elements[0].remove_pad(&real_pad) {
         //    warn!("error on removing pad from mixer: {:?}", e);
         //}
