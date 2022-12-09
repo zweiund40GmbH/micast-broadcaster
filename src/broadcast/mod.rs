@@ -493,23 +493,34 @@ impl Broadcast {
         // rtcp_udp_sink - host - network_rtcp_sink
         // rtcp_udp_src - address - network_rtcp_src
         
+        let mut change_something = false;
 
 
         if let Some(broadcast_ip) = broadcast_ip {
 
-            let rtp_udp_sink = self.pipeline.by_name("network_rtp_sink").unwrap();
-            let old_ip: String = rtp_udp_sink.property("host");
-            if broadcast_ip != old_ip {
-                self.pipeline.set_state(gst::State::Paused)?;
+            let rtp_udp_sink = self.pipeline.by_name("network_rtp_sink");
+            if let Some(rtp_udp_sink) = rtp_udp_sink {
+                let old_ip: String = rtp_udp_sink.property("host");
+                if broadcast_ip != old_ip {
+                    change_something = true;
 
-                info!("change broadcast ip from {} to {}", old_ip, broadcast_ip);
+                    let cloned_broadcast_ip = format!("{}", broadcast_ip.clone());
+                    let pipeline = self.pipeline.clone();
+                    glib::idle_add(move || {
+                        let _ = pipeline.set_state(gst::State::Paused);
 
-                let rtcp_udp_sink = self.pipeline.by_name("network_rtcp_sink").unwrap();
-                let rtcp_udp_src = self.pipeline.by_name("network_rtcp_src").unwrap();
-        
-                rtp_udp_sink.try_set_property("host", broadcast_ip)?;
-                rtcp_udp_sink.try_set_property("host", broadcast_ip)?;
-                rtcp_udp_src.try_set_property("address", broadcast_ip)?;                
+                        info!("change broadcast ip from {} to {}", old_ip, cloned_broadcast_ip);
+
+                        let rtcp_udp_sink = pipeline.by_name("network_rtcp_sink").unwrap();
+                        let rtcp_udp_src = pipeline.by_name("network_rtcp_src").unwrap();
+                
+                        let _ = rtp_udp_sink.try_set_property("host", &cloned_broadcast_ip);
+                        let _ = rtcp_udp_sink.try_set_property("host", &cloned_broadcast_ip);
+                        let _ = rtcp_udp_src.try_set_property("address", &cloned_broadcast_ip);                
+
+                        Continue(false)
+                    });
+                }
             }
             
 
@@ -519,7 +530,7 @@ impl Broadcast {
             let mut net_clock = self.net_clock.lock();
             let old_ip: String = net_clock.address().unwrap().to_string();
             if clock_ip != old_ip {
-                self.pipeline.set_state(gst::State::Paused)?;
+                change_something = true;
 
                 let port: i32 = net_clock.port();
                 let clock = net_clock.clock().unwrap();
@@ -528,12 +539,26 @@ impl Broadcast {
 
                 let new_net_clock = gst_net::NetTimeProvider::new(&clock, Some(clock_ip), port);
                 *net_clock = new_net_clock;
-                self.pipeline.use_clock(Some(&clock));
                 drop(net_clock);
+                
+                let pipeline = self.pipeline.clone();
+                glib::idle_add(move || {
+                    let _ = pipeline.set_state(gst::State::Paused);
+                    pipeline.use_clock(Some(&clock));
+                    Continue(false)
+                });
             }
         }
 
-        self.pipeline.set_state(gst::State::Playing)?;
+        if change_something == true {
+            let pipeline = self.pipeline.clone();
+            glib::idle_add(move || {
+                let _ = pipeline.set_state(gst::State::Playing);
+
+                Continue(false)
+            });
+
+        }
 
         Ok(())
     }
@@ -747,9 +772,19 @@ impl Broadcast {
     /// Use the Fallback Bin to handle errors end try to restart without interrupting anything
     /// 
     pub fn play(&self, uri: &str) -> Result<(), anyhow::Error> {
-        info!("start playing: {}", uri);
         
-        self.fallback.start(Some(uri))?;
+        let weak_fallback = self.fallback.downgrade();
+        let cloned_uri = format!("{}", uri);
+
+        glib::idle_add(move || {
+            let fallback = upgrade_weak!(weak_fallback, Continue(false));
+            info!("start playing: {}", cloned_uri);
+            
+            fallback.start(Some(&cloned_uri)).expect("failed start playback for new uri");
+
+            Continue(false)
+        });
+
         Ok(())
     }
 
