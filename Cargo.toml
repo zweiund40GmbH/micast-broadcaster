@@ -10,11 +10,11 @@ edition = "2021"
 
 memchr = "^2.5"
 
-gst = { package = "gstreamer", version="0.18" }
-gst-base = { package = "gstreamer-base", version="0.18" }
-gst-audio = { package = "gstreamer-audio", version="0.18" }
-gst-controller = { package = "gstreamer-controller", version="0.18" }
-gst-net = { package = "gstreamer-net", version="0.18" }
+gst = { package = "gstreamer", version="0.19" }
+gst-base = { package = "gstreamer-base", version="0.19" }
+gst-audio = { package = "gstreamer-audio", version="0.19" }
+gst-controller = { package = "gstreamer-controller", version="0.19" }
+gst-net = { package = "gstreamer-net", version="0.19" }
 
 once_cell = "1.0"
 parking_lot = "0.12"
@@ -34,9 +34,9 @@ async-std = {version = "1.12", features = ["attributes", "tokio1"]}
 futures = "0.3"
 
 [dev-dependencies]
-env_logger = "0.9"
+env_logger = "0.10"
 
 [features]
-default = ["v1_20"]
+default = ["v1_18"]
 v1_20 = ["gst/v1_20", "gst-base/v1_20", "gst-audio/v1_20", "gst-controller/v1_20", "gst-net/v1_20"]
 v1_18 = ["gst/v1_18", "gst-base/v1_18", "gst-audio/v1_18", "gst-controller/v1_18", "gst-net/v1_18"]
