@@ -252,7 +252,6 @@ impl Fallback {
     pub fn start(&self, uri: Option<&str>) -> Result<()> {
         info!("called start");
         let mut state = self.state.lock();
-        let source = state.source.clone();
 
         let uri_changed = if let Some(uri) = uri {
             

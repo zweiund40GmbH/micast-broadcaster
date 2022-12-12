@@ -808,7 +808,7 @@ impl Broadcast {
     fn spot_runner(&self) {
         //let self_weak = self.downgrade();
         let broadcast_clone = self.downgrade();
-        let id = glib::timeout_add(std::time::Duration::from_millis(5000), move || {
+        let id = glib::timeout_add(std::time::Duration::from_millis(10000), move || {
             let broadcast = upgrade_weak!(broadcast_clone, Continue(true));
 
             let mut scheduler_guard = broadcast.scheduler.scheduler.lock();
@@ -863,13 +863,9 @@ impl Broadcast {
     }
 
     // play a spot
-    fn play_spot(&self, uri: &str, spot_volume: Option<f64>, broadcast_volume: Option<f64>, crossfade_time: Option<u64>) -> Result<(), anyhow::Error> {
+    fn async_play_spot(&self, uri: &str, spot_volume: f64, broadcast_volume: f64, crossfade_time: u64) -> Result<(), anyhow::Error> {
 
         info!("play a spot {}", uri);
-
-        let spot_volume = spot_volume.unwrap_or(crate::MAX_VOLUME_SPOT);
-        let broadcast_volume = broadcast_volume.unwrap_or(crate::MIN_VOLUME_BROADCAST);
-        let crossfade_time = crossfade_time.unwrap_or(crate::CROSSFADE_TIME_MS);
 
         let mixer = &self.mainmixer;
         
@@ -878,7 +874,6 @@ impl Broadcast {
         self.activate_item(&item, &mixer)?;
         
         let start_time = self.running_time.read();
-
         let c = start_time.clone();
         drop(start_time);
 
@@ -901,6 +896,27 @@ impl Broadcast {
         let mut w = self.current_spot.write();
         *w = Some(item);
         drop(w);
+
+        Ok(())
+    }
+
+    fn play_spot(&self, uri: &str, spot_volume: Option<f64>, broadcast_volume: Option<f64>, crossfade_time: Option<u64>) -> Result<(), anyhow::Error> {
+
+        info!("play a spot {}", uri);
+
+        let spot_volume = spot_volume.unwrap_or(crate::MAX_VOLUME_SPOT);
+        let broadcast_volume = broadcast_volume.unwrap_or(crate::MIN_VOLUME_BROADCAST);
+        let crossfade_time = crossfade_time.unwrap_or(crate::CROSSFADE_TIME_MS);
+        let uri = String::from(uri);
+
+        //let mixer = &self.mainmixer;
+        
+        let weak_broadcast = self.downgrade();
+        glib::idle_add_once(move || {
+            let broadcast = upgrade_weak!(weak_broadcast, ());
+
+            let _ = broadcast.async_play_spot(&uri, spot_volume, broadcast_volume, crossfade_time);
+        });
 
         Ok(())
     }

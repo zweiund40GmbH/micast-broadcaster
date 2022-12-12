@@ -143,8 +143,9 @@ impl Item {
         let item_clone = item.downgrade();
         dec.connect_pad_added(move |_uridecodebin, pad| {
             let item = upgrade_weak!(item_clone);
+            info!("trigger connect_pad_added for spots playback");
             if let Err(e) = item.decoder_pad_added(pad) {
-                warn!("error on add decoder pad: {}", e);
+                warn!("(spots) error on add decoder pad: {}", e);
             }
         });
 
