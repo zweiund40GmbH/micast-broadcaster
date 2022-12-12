@@ -53,8 +53,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut bc_clone = broadcaster.clone();
     glib::timeout_add(std::time::Duration::from_secs(20), move || {
         //let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
-        bc_clone.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
-
+        //let _ = bc_clone.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
+        let _ = bc_clone.play("https://antnds.streamabc.net/ands-antndsxmas-mp3-128-3716776");
         Continue(true)
     });
 

@@ -200,7 +200,7 @@ impl Fallback {
     fn set_watchdog(&self, enabled: bool) {
         let state = self.state.lock();
         if enabled {
-            state.watchdog.set_property("timeout", &6000i32);
+            state.watchdog.set_property("timeout", &36000i32);
         } else {
             state.watchdog.set_property("timeout", &0i32);
         }
