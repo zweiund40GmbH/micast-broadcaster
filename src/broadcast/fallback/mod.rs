@@ -154,37 +154,46 @@ impl Fallback {
         glib::idle_add(move || {
             let this = upgrade_weak!(weak_fallback, Continue(true));
 
-            debug!("disable watchdog!");
-            let mut state = this.state.lock();
+            info!("disable watchdog!");
+            let  state = this.state.lock();
             state.watchdog.set_property("timeout", &0i32);
+            let source = state.source.clone();
+            drop(state);
 
+            info!("set pipeline to Null");
+            let _ = this.pipeline.set_state(gst::State::Null);
 
-
-            let source = state.source.as_ref();
             if let Some(unwraped_source) = source {
-                debug!("stop source and remove source");
+                info!("stop source and remove source");
                 let _ = unwraped_source.set_state(gst::State::Null);
                 
-                debug!("reset bin, set bin state to null");
+                info!("reset bin, set bin state to null");
                 let _ = this.bin.set_state(gst::State::Null);
                 
-                let _ = this.bin.remove(unwraped_source);
+                info!("remove source from bin");
+                let _ = this.bin.remove(&unwraped_source);
+                info!("sync state with parent");
+                let _ = this.bin.sync_state_with_parent();
+
+                info!("lock state to set source to None");
+                let mut state = this.state.lock();
                 state.source = None;
             }
 
-            debug!("remove source from mixer if connected");
+            info!("remove source from mixer if connected");
+            let mut state = this.state.lock();
             if state.has_mixer_connected {
+                info!("release pad from mixer");
                 this.mixer.release_pad(state.bin_src.peer().unwrap());
                 state.has_mixer_connected = false;
             }
-
             drop(state);
 
-            debug!("reset pipeline, set pipeline state to null");
-            let _ = this.pipeline.set_state(gst::State::Null);
+            info!("reset pipeline, set pipeline state to null");
             let _ = this.pipeline.set_state(gst::State::Ready);
+            sleep_ms!(100);
             let _ = this.pipeline.set_state(gst::State::Playing);
-            // remove source
+            info!("sleep 2000 ms then try restart");
             sleep_ms!(2000);
             
 

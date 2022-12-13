@@ -865,7 +865,7 @@ impl Broadcast {
     // play a spot
     fn async_play_spot(&self, uri: &str, spot_volume: f64, broadcast_volume: f64, crossfade_time: u64) -> Result<(), anyhow::Error> {
 
-        info!("play a spot {}", uri);
+        info!("async: play a spot {}", uri);
 
         let mixer = &self.mainmixer;
         
@@ -902,7 +902,7 @@ impl Broadcast {
 
     fn play_spot(&self, uri: &str, spot_volume: Option<f64>, broadcast_volume: Option<f64>, crossfade_time: Option<u64>) -> Result<(), anyhow::Error> {
 
-        info!("play a spot {}", uri);
+        info!("local: play a spot {}", uri);
 
         let spot_volume = spot_volume.unwrap_or(crate::MAX_VOLUME_SPOT);
         let broadcast_volume = broadcast_volume.unwrap_or(crate::MIN_VOLUME_BROADCAST);
