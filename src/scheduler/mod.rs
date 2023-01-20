@@ -119,7 +119,6 @@ impl Scheduler {
     /// - filter out all spots outside of given for_date date
     /// - generate all intervals
     fn process(&mut self, for_date: DateTime<Local>) -> Result<(), anyhow::Error> {
-
         if self.load_files == true {
             if let Ok(files) = self.recv.try_recv() {
                 info!("received some downloaded files, set files from downloaded paths");
@@ -162,6 +161,9 @@ impl Scheduler {
                 }).flatten().collect::<Vec<DateTime<Local>>>();
             if schedules.len() > 0 {
                 if let Some(local_uri) = self.files.iter().find(|file| file.id == spot.file).map(|file| format!("file://{}",file.local.as_ref().unwrap_or(&file.uri))) {
+                    if self.spots.iter().find(|s| s.uri == local_uri).is_some() {
+                        continue;
+                    }
                     self.spots.push(Spot {
                         uri: local_uri,
                         runs_at: schedules,
@@ -427,6 +429,34 @@ mod tests {
             ScheduledSpot { uri: "file:///ab_9_2.mp3".to_string(), runs_at: Local.ymd(2022, 4, 4).and_hms(21, 20, 00) },
             
         ));
+
+    }
+
+    #[test]
+    fn spots_len() {
+        // 2022-04-04 10:30:00 ist ein Montag
+        let s = r#"<TimeTable>
+        <files id="0" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <files id="1" uri="https://dev.micast.de/media.micast.de/spots/8487 - Big Cash Instore Spots DE 03-2019 Mix-03 - 01_09_15.wav"/>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+                <schedules start="08:00" end="22:00" weekdays="Mon-Fri,Sun" interval="3m"/>
+        </spots>
+        <spots file="0" start="2022-04-01T17:00:00" end="2022-06-01T23:59:00">
+                <schedules start="08:00" end="22:00" weekdays="Mon-Fri,Sun" interval="1m"/>
+        </spots>
+        </TimeTable>"#;
+
+        let mut out = Scheduler::new();
+        let _ = out.from_str(&s);
+        let mut process_counter = 0;
+        let mut local_date = Local.with_ymd_and_hms(2022, 4, 4, 10, 30, 00).unwrap();
+        while process_counter < 200 {
+            local_date = local_date.checked_add_signed(chrono::Duration::milliseconds(200)).unwrap();
+            let _ = out.next(local_date);
+            process_counter += 1;
+        }
+
+        assert_eq!(out.spots.len(), 1);
 
     }
 }
