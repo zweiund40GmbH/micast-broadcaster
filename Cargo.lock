@@ -1370,7 +1370,7 @@ dependencies = [
 [[package]]
 name = "micast-rodio"
 version = "0.1.0"
-source = "git+https://github.com/zweiund40gmbh/micast-rodio?branch=main#aa3edf68819450e3c119d2a7bb41a5ae1d95e53d"
+source = "git+https://github.com/zweiund40gmbh/micast-rodio.git?branch=main#aa3edf68819450e3c119d2a7bb41a5ae1d95e53d"
 dependencies = [
  "anyhow",
  "async-std",
