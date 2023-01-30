@@ -1,6 +1,6 @@
 [package]
 name = "micast-broadcaster"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 
 [dependencies]
@@ -29,7 +29,7 @@ reqwest-retry = { version = "0.1.5" }
 
 async-std = {version = "1.12", features = ["attributes", "tokio1"]}
 futures = "0.3"
-micast-rodio = { git = "https://github.com/zweiund40gmbh/micast-rodio.git", branch="main", features=["gstreamer", "minimp3"]}
+micast-rodio = { git = "https://github.com/zweiund40GmbH/micast-rodio.git", branch="main", features=["gstreamer", "minimp3"]}
 
 env_logger = "0.10"
 
