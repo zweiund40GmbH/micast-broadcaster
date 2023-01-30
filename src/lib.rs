@@ -13,6 +13,7 @@ mod encryption;
 
 pub mod scheduler;
 pub mod broadcast;
+pub mod output;
 
 
 pub use player::PlaybackClient;

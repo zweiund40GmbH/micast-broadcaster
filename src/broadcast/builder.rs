@@ -8,10 +8,6 @@ pub struct Builder {
     rate: Option<i32>,
     broadcast_ip: Option<String>,
     clock_port: Option<i32>,
-    
-    spot_volume: Option<f64>, 
-    broadcast_volume: Option<f64>, 
-    crossfade_time: Option<u64>,
     startup_output: super::OutputMode,
 }
 
@@ -53,22 +49,6 @@ impl Builder {
         self
     }
 
-    pub fn set_spot_volume(mut self, volume: Option<f64>) -> Self {
-        self.spot_volume = volume;
-        self
-    }
-
-
-    pub fn set_broadcast_volume(mut self, volume:  Option<f64>) -> Self {
-        self.broadcast_volume = volume;
-        self
-    }
-
-    pub fn set_crossfade_time(mut self, duration: Option<std::time::Duration>) -> Self {
-        self.crossfade_time = duration.map_or(None, |v| Some(v.as_millis() as u64));
-        self
-    }
-
     pub fn set_startup_output(mut self, output: super::OutputMode) -> Self {
         self.startup_output = output;
         self
@@ -84,9 +64,6 @@ impl Builder {
             self.rate.unwrap_or(44100),
             self.clock_port.unwrap_or(8555),
             self.broadcast_ip.clone(),
-            self.spot_volume,
-            self.broadcast_volume,
-            self.crossfade_time,
             self.startup_output.clone(),
         )
     }
