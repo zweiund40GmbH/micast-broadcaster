@@ -1,33 +1,33 @@
 
 use micast_rodio::{new_gstreamer, Mp3Streamer};
-use gst_app::prelude::*;
-use std::sync::{Arc, atomic::AtomicBool};
-use log::{warn,debug};
+use std::sync::Arc; //, atomic::AtomicBool};
+use log::warn;
 
 pub struct Output {
-    appsrc: gst_app::AppSrc,
+    //appsrc: gst_app::AppSrc,
     streamer: Arc<Mp3Streamer>,
     thread_id: Option<std::thread::JoinHandle<()>>,
-    alive: Arc<AtomicBool>,
 }
 
 impl Output {
-    pub fn new_from_broadcaster(broadcaster: &super::Broadcast, default_uri: &str, xml: &str) -> Self {
+    pub fn new_from_broadcaster(broadcaster: &super::Broadcast, default_uri: &str, xml: Option<String>) -> Self {
         let appsrc = broadcaster.appsrc.clone();
-        let streamer = new_gstreamer(&appsrc, default_uri.to_string(), xml, 1.0, 0.5, 0.5);
+        let streamer = new_gstreamer(&appsrc, default_uri.to_string(), 1.0, 0.5, 0.5);
+
+        if let Some(xml) = xml {
+            let _ = streamer.set_xml(xml);
+        }
+
         Output {
-            appsrc,
+            //appsrc,
             streamer: Arc::new(streamer),
             thread_id: None,
-            alive: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn run(&mut self) {
-        debug!("want to run streamer!");
-        self.alive.store(true, std::sync::atomic::Ordering::SeqCst);
-
-        let alive = self.alive.clone();
+        // self.alive.store(true, std::sync::atomic::Ordering::SeqCst);
+        // let alive = self.alive.clone();
 
         let cloned_streamer = self.streamer.clone();
 
@@ -36,14 +36,16 @@ impl Output {
             warn!("Streamer thread ended!");
         });
 
-        debug!("Thread with streamer created!");
         self.thread_id = Some(thread_id);
-
 
     }
 
     pub fn play(&self, uri: &str) {
-        self.streamer.set_stream(uri.to_string());
+        let _  = self.streamer.set_stream(uri.to_string());
+    }
+
+    pub fn set_timetable(&self, xml: &str) {
+        let _ = self.streamer.set_xml(xml.to_string());
     }
 
     

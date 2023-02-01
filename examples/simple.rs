@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     //broadcaster.set_scheduler(scheduler);
 
 
-    let mut output = output::Output::new_from_broadcaster(&broadcaster, "http://itcoops.de:8000/drumyourass.mp3", "/Users/nico/project_micast/dev/micast-broadcaster/spots/pocking_timetable.xml");
+    let mut output = output::Output::new_from_broadcaster(&broadcaster, "http://itcoops.de:8000/drumyourass.mp3", Some("/Users/nico/project_micast/dev/micast-broadcaster/spots/pocking_timetable.xml".to_string()));
     output.run();
 
     broadcaster.start()?;

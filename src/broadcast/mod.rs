@@ -197,10 +197,7 @@ impl Broadcast {
             }
         };
 
-        debug!("already");
-
         let bus = pipeline.bus().expect("Pipeline without bus should never happen");
-
 
         // set the spot settings
 
@@ -215,11 +212,7 @@ impl Broadcast {
             network_bin: network_element,
             local_bin: Mutex::new(local_bin),
             tee_bin,
-
             net_clock: Mutex::new(net_clock),
-
-            //running_time: RwLock::new(gst::ClockTime::ZERO),
-            //current_spot: RwLock::new(None),
             rate: Some(rate),
         }));
 
