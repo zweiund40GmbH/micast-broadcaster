@@ -24,14 +24,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         //.set_server_ip("127.0.0.1")
         //.set_broadcast_ip("127.0.0.1")
         .set_audiorate(44100)
-        //.set_startup_output(broadcast::OutputMode::Local(None))
-        .set_startup_output(broadcast::OutputMode::Network)
+        .set_startup_output(broadcast::OutputMode::Local(None))
+        //.set_startup_output(broadcast::OutputMode::Network)
         .build_server()?;
 
     //broadcaster.set_scheduler(scheduler);
 
 
-    let mut output = output::Output::new_from_broadcaster(&broadcaster, "http://itcoops.de:8000/drumyourass.mp3", Some("/Users/nico/project_micast/dev/micast-broadcaster/spots/pocking_timetable.xml".to_string()));
+    let mut output = output::Output::new_from_broadcaster(&broadcaster, "https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3", Some("./spots/pocking_timetable.xml".to_string()));
     output.run();
 
     broadcaster.start()?;
@@ -44,13 +44,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // https://wdr-1live-live.sslcast.addradio.de/wdr/1live/live/mp3/128/stream.mp3
 
-    let output = Arc::new(output);
-    glib::timeout_add(std::time::Duration::from_secs(20), move || {
-        //let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
-        let _ = output.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
-        //let _ = bc_clone.play("https://antnds.streamabc.net/ands-antndsxmas-mp3-128-3716776");
-        Continue(true)
-    });
+    //let output = Arc::new(output);
+    //glib::timeout_add(std::time::Duration::from_secs(20), move || {
+    //    //let _ = bc_clone.switch_output(broadcast::OutputMode::Local(None));
+    //    let _ = output.play("https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3");
+    //    //let _ = bc_clone.play("https://antnds.streamabc.net/ands-antndsxmas-mp3-128-3716776");
+    //    Continue(true)
+    //});
 
 
 

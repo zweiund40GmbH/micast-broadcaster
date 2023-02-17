@@ -48,5 +48,9 @@ impl Output {
         let _ = self.streamer.set_xml(xml.to_string());
     }
 
+    pub fn is_restarted(&self) -> bool {
+        self.streamer.is_restarted()
+    }
+
     
 }
