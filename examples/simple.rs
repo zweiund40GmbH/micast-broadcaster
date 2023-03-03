@@ -24,8 +24,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         //.set_server_ip("127.0.0.1")
         //.set_broadcast_ip("127.0.0.1")
         .set_audiorate(44100)
-        .set_startup_output(broadcast::OutputMode::Local(None))
-        //.set_startup_output(broadcast::OutputMode::Network)
+        //.set_startup_output(broadcast::OutputMode::Local(None))
+        .set_startup_output(broadcast::OutputMode::Network)
         .build_server()?;
 
     //broadcaster.set_scheduler(scheduler);

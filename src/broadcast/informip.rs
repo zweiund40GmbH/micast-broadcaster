@@ -2,7 +2,7 @@
 // 
 // 
 
-use std::net::{IpAddr, UdpSocket};
+use std::net::{IpAddr, UdpSocket, Ipv4Addr};
 use std::sync::mpsc::Receiver;
 use std::thread;
 use std::time::Duration;
@@ -31,6 +31,7 @@ pub fn inform_clients() {
         loop {
 
             info!("send micast-dj info");
+            socket.connect((IpAddr::V4(Ipv4Addr::BROADCAST), 5015));
             let res = socket.send(content.as_bytes());
             if res.is_err() {
                 // try to reconnect...
@@ -48,7 +49,7 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
     let (sender, receiver) = std::sync::mpsc::channel();
 
     thread::spawn(|| {
-        let socket = UdpSocket::bind("0.0.0.0:5015").unwrap();
+        let socket = UdpSocket::bind((IpAddr::V4(Ipv4Addr::BROADCAST), 5015)).unwrap();
         socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
         socket.set_broadcast(true).unwrap();
 
