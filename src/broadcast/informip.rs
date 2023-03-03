@@ -25,9 +25,6 @@ pub fn inform_clients() {
             for (name, ipaddr) in ifas {
                 if matches!(ipaddr, IpAddr::V4(_)) && (!name.contains("lo") || ipaddr.is_loopback() == false ) && ipaddr.is_ipv4() {
                     //println!("This is your local IP address: {:?}, {}", ipaddr, name);
-                    let socket = UdpSocket::bind("0.0.0.0:5015").unwrap();
-                    socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-                    socket.set_broadcast(true).unwrap();
 
                     // make broadcast ip
                     let broadcast_ip = { 
@@ -43,6 +40,9 @@ pub fn inform_clients() {
                     };
                     
                     info!("send micast-dj info for ip {}", broadcast_ip);
+                    let socket = UdpSocket::bind("0.0.0.0:5015").unwrap();
+                    socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                    socket.set_broadcast(true).unwrap();
                     socket.connect((broadcast_ip, 5015));
                     let res = socket.send(content.as_bytes());
                     if res.is_err() {
@@ -52,7 +52,7 @@ pub fn inform_clients() {
                 }
             }
 
-            thread::sleep(Duration::from_secs(5));
+            thread::sleep(Duration::from_secs(1));
 
         }
     });
@@ -86,13 +86,12 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
                     let socket = UdpSocket::bind((broadcast_ip, 5015)).unwrap();
                     socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
                     socket.set_broadcast(true).unwrap();
-                    socket.connect((broadcast_ip, 5015));
                     receiver_sockets.push(socket);
 
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(5000));
+            std::thread::sleep(std::time::Duration::from_millis(10000));
             for s in receiver_sockets {
                 println!("recv data...");
                 let mut buffer = [0u8; 250];
