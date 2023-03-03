@@ -53,6 +53,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     //});
 
 
+    broadcast::informip::inform_clients();
+
+
 
     debug!("bin hier");
     main_loop.run();

@@ -1,4 +1,6 @@
 
+use std::net::UdpSocket;
+
 use gst::glib;
 use log::{info,warn};
 use micast_broadcaster::PlaybackClient;
@@ -22,6 +24,19 @@ fn main() -> Result<(), Box<anyhow::Error>> {
 
     info!("Broadcast player tester");
 
+    use std::net::IpAddr;
+    use local_ip_address::list_afinet_netifas;
+
+    let ifas = list_afinet_netifas().unwrap();
+
+    for (name, ipaddr) in ifas {
+        if matches!(ipaddr, IpAddr::V4(_)) && (!name.contains("lo") || ipaddr.is_loopback() == false ) && ipaddr.is_ipv4() {
+            println!("This is your local IP address: {:?}, {}", ipaddr, name);
+
+
+
+        }
+    }
     let main_loop = glib::MainLoop::new(None, false);
 
     // now we crate secondly the direct receiver client
@@ -34,8 +49,8 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     let mut player = PlaybackClient::new(
         //"127.0.0.1", 
         //"127.0.0.1", 
-        "224.1.1.43",
-        "127.0.0.1", 
+        "224.1.1.44",
+        "224.1.1.44", 
        //"224.1.1.42",
        //"224.1.1.43",
         3333, // rtp in

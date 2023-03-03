@@ -10,6 +10,7 @@ use std::sync::{Arc, Weak};
 use parking_lot::{Mutex };
 // playback client
 
+use crate::broadcast;
 use crate::helpers::{make_element, upgrade_weak};
 
 use crate::sleep_ms;
@@ -150,6 +151,42 @@ impl PlaybackClient {
             };
  
             info!("player - current pipeline state: {:?}", pipeline.state(Some(gst::ClockTime::from_seconds(1))));
+
+            Continue(true)
+        });
+
+        let ip_receiver = broadcast::informip::dedect_server_ip();
+        let weak_playbackclient_ip = playbackclient.downgrade();
+        glib::timeout_add(std::time::Duration::from_millis(500), move || {
+            match ip_receiver.try_recv() {
+                Ok(server_ip) => {
+                    let pbc = match weak_playbackclient_ip.upgrade() {
+                        Some(pbc) => pbc,
+                        None => return glib::Continue(true),
+                    };
+
+                    let state = {
+                        let mut try_lock_state = pbc.state.try_lock();
+                        while try_lock_state.is_none() {
+                            sleep_ms!(400);
+                            try_lock_state = pbc.state.try_lock();
+                        }
+
+                        try_lock_state.unwrap()
+                    };
+                    let current_clock_ip = state.current_clock_ip.clone();
+                    drop(state);
+
+                    if current_clock_ip != server_ip.to_string() {
+                        let new_server_ip = server_ip.to_string();
+                        info!("gets informed about a new server_ip {}", new_server_ip);
+                        pbc.change_clock_and_server(&new_server_ip, &new_server_ip);
+
+                    }
+
+                },
+                _ => {}
+            }
 
             Continue(true)
         });

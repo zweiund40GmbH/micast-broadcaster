@@ -9,6 +9,7 @@ mod whitenoise;
 mod methods;
 mod fallback;
 mod local;
+pub mod informip;
 //mod fallback2;
 
 pub use builder::Builder;
