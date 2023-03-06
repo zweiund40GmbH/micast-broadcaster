@@ -12,7 +12,7 @@ pub struct Output {
 impl Output {
     pub fn new_from_broadcaster(broadcaster: &super::Broadcast, default_uri: &str, xml: Option<String>) -> Self {
         let appsrc = broadcaster.appsrc.clone();
-        let streamer = new_gstreamer(&appsrc, default_uri.to_string(), 1.0, 0.5, 0.5);
+        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), 1.0, 0.5, 0.5);
 
         if let Some(xml) = xml {
             let _ = streamer.set_xml(xml);
@@ -41,7 +41,7 @@ impl Output {
     }
 
     pub fn play(&self, uri: &str) {
-        let _  = self.streamer.set_stream(uri.to_string());
+        let _  = self.streamer.set_stream(Some(uri.to_string()));
     }
 
     pub fn set_timetable(&self, xml: &str) {
