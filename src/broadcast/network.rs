@@ -96,8 +96,8 @@ pub fn create_bin(
     });
 
 
-    //rtp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
-    //rtcp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
+    rtp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
+    rtcp_udp_sink.try_set_property("multicast-iface", &"enp5s0, wlp1s0, en7, eth0")?;
 
     rtp_udp_sink.try_set_property("force-ipv4", &true)?;
     rtcp_udp_sink.try_set_property("force-ipv4", &true)?;

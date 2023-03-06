@@ -18,9 +18,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let main_loop = glib::MainLoop::new(None, false);
     
     let broadcaster = broadcast::Builder::new()
-        .set_server_ip("127.0.0.1")
+        .set_server_ip("0.0.0.0")
         //.set_server_ip("224.1.1.43")
-        .set_broadcast_ip("224.1.1.43")
+        .set_broadcast_ip("0.0.0.0")
         //.set_server_ip("127.0.0.1")
         //.set_broadcast_ip("127.0.0.1")
         .set_audiorate(44100)
