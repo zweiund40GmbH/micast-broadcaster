@@ -601,7 +601,7 @@ fn create_pipeline(
     rtpbin.try_set_property("latency", latency.unwrap_or(LATENCY) as u32)?;
     rtpbin.try_set_property_from_str("ntp-time-source", "clock-time")?;
     rtpbin.try_set_property("ntp-sync", &true)?;
-    rtpbin.try_set_property("autoremove", &true)?;
+    //rtpbin.try_set_property("autoremove", &true)?;
 
     if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
         crate::encryption::client_encryption(&rtpbin)?;

@@ -87,6 +87,8 @@ pub fn create_bin(
     rtpbin.try_set_property_from_str("ntp-time-source", "clock-time")?;
     //rtpbin.try_set_property("ntp-sync", &true)?;
 
+    rtpbin.try_set_property("rtcp-sync-interval", &1000u32)?; // in ms
+    rtpbin.try_set_property("do-retransmission", &true)?;
     //rtpbin.try_set_property("rtcp-sync-send-time", &false)?;
     
     rtpbin.connect_pad_added(move |el, pad| {
