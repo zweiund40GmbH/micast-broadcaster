@@ -575,7 +575,7 @@ fn create_pipeline(
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
     //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
     //rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    //rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));
+    rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));
 
     if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
         crate::encryption::client_encryption(&rtpbin)?;
