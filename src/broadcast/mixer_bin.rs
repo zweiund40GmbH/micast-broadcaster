@@ -47,7 +47,7 @@ impl Mixer {
             pipe.push(converter);
 
             let capsfilter = make_element("capsfilter", Some("master_mixer__capsfilter"))?; 
-            capsfilter.try_set_property("caps",&caps)?;
+            capsfilter.set_property("caps",&caps);
             bin.add(&capsfilter)?;
             pipe.push(capsfilter);
         }
@@ -108,9 +108,7 @@ impl Mixer {
         let ghost_pad: gst::GhostPad = pad.downcast().unwrap();
         let real_pad = ghost_pad.target().unwrap();
 
-        if let Err(e) = real_pad.try_set_property("volume", volume){
-            warn!("could not set volume for spot: {:?}", e);
-        }
+        real_pad.set_property("volume", volume);
     }
 
     pub fn release_pad(&self, pad: gst::Pad) {

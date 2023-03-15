@@ -1,15 +1,11 @@
-use micast_broadcaster::{broadcast, scheduler::Scheduler, output };
+use micast_broadcaster::{broadcast, output };
 
-use gst::prelude::*;
 
-use chrono::prelude::*;
-
-use log::{debug, warn};
+use log::debug;
 
 use gst::glib;
 
 use std::error::Error;
-use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -18,9 +14,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let main_loop = glib::MainLoop::new(None, false);
     
     let broadcaster = broadcast::Builder::new()
-        .set_server_ip("0.0.0.0")
         //.set_server_ip("224.1.1.43")
-        .set_broadcast_ip("0.0.0.0")
+        //.set_server_ip("224.1.1.43")
+        .set_broadcast_ip("224.1.1.43")
         //.set_server_ip("127.0.0.1")
         //.set_broadcast_ip("127.0.0.1")
         .set_audiorate(44100)
@@ -52,12 +48,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     //    Continue(true)
     //});
 
-
-    broadcast::informip::inform_clients();
-
-
-
-    debug!("bin hier");
     main_loop.run();
 
     Ok(())

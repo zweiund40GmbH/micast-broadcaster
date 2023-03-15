@@ -1,6 +1,4 @@
-
-//use gst::prelude::*;
-use anyhow::{anyhow};
+use anyhow::anyhow;
 
 // upgrade weak reference or return
 macro_rules! upgrade_weak {
@@ -30,7 +28,7 @@ pub fn make_element(
     factory_name: &'static str,
     element_name: Option<&str>,
 ) -> Result<gst::Element, anyhow::Error> {
-    match gst::ElementFactory::make(factory_name, element_name) {
+    match gst::ElementFactory::make_with_name(factory_name, element_name) {
         Ok(elem) => Ok(elem),
         Err(_) => { 
             Err(anyhow!("Missing element: {}", factory_name))

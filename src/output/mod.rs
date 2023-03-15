@@ -4,7 +4,6 @@ use std::sync::Arc; //, atomic::AtomicBool};
 use log::warn;
 
 pub struct Output {
-    //appsrc: gst_app::AppSrc,
     streamer: Arc<Mp3Streamer>,
     thread_id: Option<std::thread::JoinHandle<()>>,
 }

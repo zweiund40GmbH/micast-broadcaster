@@ -1,22 +1,17 @@
 /// main work here
 ///
 mod network;
-//mod spots;
 mod builder;
 mod mixer_bin;
-mod volume;
-mod whitenoise;
-mod methods;
-mod fallback;
 mod local;
 pub mod informip;
-//mod fallback2;
+
+use std::sync::mpsc::Sender;
 
 pub use builder::Builder;
 
 use gst::prelude::*;
 use gst::glib;
-use chrono::prelude::*;
 
 use crate::helpers::*;
 use crate::sleep_ms;
@@ -26,11 +21,9 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
-use anyhow::{bail, anyhow};
 use log::{debug, warn, info};
-use micast_rodio::new_gstreamer;
 
 pub(crate) const ENCRYPTION_ENABLED:bool = true;
 
@@ -72,6 +65,8 @@ pub struct BroadcastInner {
     rate: Option<i32>,
 
     current_output: Mutex<OutputMode>,
+
+    clock_zeroconf: Mutex<Option<Sender<bool>>>,
 }
 
 // To be able to access the App's fields directly
@@ -138,13 +133,13 @@ impl Broadcast {
             .field("layout", &"interleaved")
             .build();
             
-        let src = gst::ElementFactory::make("appsrc", None).unwrap();
+        let src = gst::ElementFactory::make_with_name("appsrc", None).unwrap();
         src.set_property("is-live", &true);
         src.set_property("block", &false);
         src.set_property("format", &gst::Format::Time);
         src.set_property("caps", &maincaps);
 
-        let audioconvert = gst::ElementFactory::make("audioconvert", None).unwrap();
+        let audioconvert = gst::ElementFactory::make_with_name("audioconvert", None).unwrap();
         //let audiosink = gst::ElementFactory::make("autoaudiosink", None).unwrap();
         //let queue = gst::ElementFactory::make("queue2", None).unwrap();
         //queue.set_property("max-size-time", &32000u64);
@@ -155,10 +150,12 @@ impl Broadcast {
         // setup clock for synchronization
         let clock = gst::SystemClock::obtain();
         debug!("add net clock server {} port {}", server_ip, clock_port);
-        let net_clock = gst_net::NetTimeProvider::new(&clock, None, clock_port);
+        let net_clock = gst_net::NetTimeProvider::new(&clock, None, clock_port)?;
         clock.set_property("clock-type", &gst::ClockType::Realtime);
+
         pipeline.use_clock(Some(&clock));
         
+        let service_sender = crate::services::clock_server::service()?;
 
 
         // global resample
@@ -184,7 +181,7 @@ impl Broadcast {
 
         match &current_output {
             OutputMode::Network => {
-                pipeline.add(&network_element);
+                pipeline.add(&network_element)?;
                 debug!("link mainmixer src with tcp_output sink");
                 tee_bin.link(&network_element)?;
             },
@@ -206,6 +203,9 @@ impl Broadcast {
             .dynamic_cast::<gst_app::AppSrc>()
             .expect("Source element is expected to be an appsrc!");
 
+        pipeline.set_base_time(gst::ClockTime::ZERO);
+        pipeline.set_start_time(gst::ClockTime::NONE);
+
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             appsrc,
@@ -215,6 +215,7 @@ impl Broadcast {
             tee_bin,
             net_clock: Mutex::new(net_clock),
             rate: Some(rate),
+            clock_zeroconf: Mutex::new(Some(service_sender)),
         }));
 
 
@@ -228,7 +229,7 @@ impl Broadcast {
                 None => return None
             };
             let err_msg = v[1].get::<gst::Message>().unwrap();
-            let src = match err_msg.src().and_then(|s| s.downcast::<gst::Element>().ok()) {
+            let src = match err_msg.src().and_then(|s| s.clone().downcast::<gst::Element>().ok()) {
                 None => {
                     warn!("could not handle error cause no element found");
                     return None;
@@ -298,9 +299,9 @@ impl Broadcast {
                         let rtcp_udp_sink = pipeline.by_name("network_rtcp_sink").unwrap();
                         let rtcp_udp_src = pipeline.by_name("network_rtcp_src").unwrap();
                 
-                        let _ = rtp_udp_sink.try_set_property("host", &cloned_broadcast_ip);
-                        let _ = rtcp_udp_sink.try_set_property("host", &cloned_broadcast_ip);
-                        let _ = rtcp_udp_src.try_set_property("address", &cloned_broadcast_ip);                
+                        let _ = rtp_udp_sink.set_property("host", &cloned_broadcast_ip);
+                        let _ = rtcp_udp_sink.set_property("host", &cloned_broadcast_ip);
+                        let _ = rtcp_udp_src.set_property("address", &cloned_broadcast_ip);                
 
                         Continue(false)
                     });
@@ -308,30 +309,6 @@ impl Broadcast {
             }
             
 
-        }
-
-        if let Some(clock_ip) = clock_ip {
-            let mut net_clock = self.net_clock.lock();
-            let old_ip: String = net_clock.address().unwrap().to_string();
-            if clock_ip != old_ip {
-                change_something = true;
-
-                let port: i32 = net_clock.port();
-                let clock = net_clock.clock().unwrap();
-                
-                info!("change clock ip from {} to {}", old_ip, clock_ip);
-
-                let new_net_clock = gst_net::NetTimeProvider::new(&clock, Some(clock_ip), port);
-                *net_clock = new_net_clock;
-                drop(net_clock);
-                
-                let pipeline = self.pipeline.clone();
-                glib::idle_add(move || {
-                    let _ = pipeline.set_state(gst::State::Paused);
-                    pipeline.use_clock(Some(&clock));
-                    Continue(false)
-                });
-            }
         }
 
         if change_something == true {

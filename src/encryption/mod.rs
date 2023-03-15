@@ -157,12 +157,12 @@ fn callback(pre: &RTPorRTCP, deoren: &DeOrEncoder, key: &gst::Buffer, mki: &gst:
 
             debug!("request pad for {} {}", pre.clone().to_string(), name );
             element.request_pad_simple(&name);
-            element.try_set_property_from_str("rtp-cipher", &"aes-128-icm" )?;
-            element.try_set_property_from_str("rtp-auth", &"hmac-sha1-80" )?;
-            element.try_set_property_from_str("rtcp-cipher", &"aes-128-icm" )?;
-            element.try_set_property_from_str("rtcp-auth", &"hmac-sha1-80" )?;
+            element.set_property_from_str("rtp-cipher", &"aes-128-icm" );
+            element.set_property_from_str("rtp-auth", &"hmac-sha1-80" );
+            element.set_property_from_str("rtcp-cipher", &"aes-128-icm" );
+            element.set_property_from_str("rtcp-auth", &"hmac-sha1-80" );
 
-            element.try_set_property("key", key )?;
+            element.set_property("key", key );
 
             //element.try_set_property("mki", mki )?;
             element

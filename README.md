@@ -24,3 +24,6 @@ __more documentation and a better README if time is left.__
 ## Appendix
 
 Heavly using [GStreamer](https://gitlab.freedesktop.org/gstreamer) and [GStreamer-rs](https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/tree/main)
+
+
+GST_PLUGIN_PATH=/opt/homebrew/Cellar/gstreamer/1.22.0:/opt/homebrew/Cellar/gst-plugins-base/1.22.0_1:/opt/homebrew/Cellar/gst-plugins-good/1.22.0_1:/opt/homebrew/Cellar/gst-plugins-ugly/1.22.0:/opt/homebrew/Cellar/gst-plugins-bad/1.22.0

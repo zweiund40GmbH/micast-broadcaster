@@ -53,7 +53,7 @@ impl LocalPlayer {
                     sleep_ms!(100);
                 }
                 MessageView::Error(err) => {
-                    let src = match err.src().and_then(|s| s.downcast::<gst::Element>().ok()) {
+                    let src = match err.src().and_then(|s| s.clone().downcast::<gst::Element>().ok()) {
                         None => {
                             warn!("could not handle error cause no element found");
                             return glib::Continue(true);
@@ -102,8 +102,8 @@ impl LocalPlayer {
         })?;
        
         let tcp_client = make_element("tcpclientsrc", Some("local_tcpclient"))?;
-        tcp_client.try_set_property("port", &port)?;
-        tcp_client.try_set_property("host", "127.0.0.1")?;
+        tcp_client.set_property("port", &port);
+        tcp_client.set_property("host", "127.0.0.1");
         //tcp_client.try_set_property("host", "10.42.200.43")?;
 
         let _srcpad = tcp_client.static_pad("src").unwrap();
@@ -117,7 +117,7 @@ impl LocalPlayer {
                 format=(string)S16LE,
                 layout=(str)interleaved
                 "#, rate))?;
-        caps_element.try_set_property("caps", &caps)?;
+        caps_element.set_property("caps", &caps);
 
         pipeline.add(&caps_element)?;
         pipeline.add(&tcp_client)?;
@@ -178,7 +178,7 @@ impl LocalPlayer {
     fn set_output(pipeline: &gst::Pipeline, caps_element: &gst::Element, audiodevice: Option<&str>) -> Result<(), anyhow::Error> {
         let audiosink = if let Some(audiodevice) = audiodevice {
             let a = make_element("alsasink", Some("audiosink"))?;
-            a.try_set_property("device", audiodevice)?;
+            a.set_property("device", audiodevice);
             a
         } else {
             make_element("autoaudiosink", Some("audiosink"))?

@@ -31,7 +31,7 @@ pub fn create_bin<T: Into<String> + Clone + fmt::Debug + fmt::Display>(
     let audiosink = if let Some(audiodevice) = &audio_device {
         let a = make_element("alsasink", Some("audiosink"))?;
         let device: String = audiodevice.to_string();
-        a.try_set_property("device",device)?;
+        a.set_property("device",device);
         a
     } else {
         make_element("autoaudiosink", Some("audiosink"))?
