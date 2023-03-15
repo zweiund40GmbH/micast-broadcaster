@@ -10,6 +10,9 @@ use std::time::Duration;
 use local_ip_address::list_afinet_netifas;
 use log::{info, trace};
 
+
+const BROADCAST_PORT:u16 = 5889;
+
 pub fn inform_clients() {
 
 
@@ -40,10 +43,11 @@ pub fn inform_clients() {
                     };
                     
                     info!("send micast-dj info for ip {}", broadcast_ip);
-                    let socket = UdpSocket::bind("0.0.0.0:5015").unwrap();
+                    //let socket = UdpSocket::bind(format!("0.0.0.0:{}", BROADCAST_PORT)).unwrap();
+                    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
                     socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
                     socket.set_broadcast(true).unwrap();
-                    let _ = socket.connect((broadcast_ip, 5015));
+                    let _ = socket.connect((broadcast_ip, BROADCAST_PORT));
                     let res = socket.send(content.as_bytes());
                     if res.is_err() {
                         // try to reconnect...
@@ -83,7 +87,7 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
                         Ipv4Addr::from(temp)
                     };
                     
-                    let socket = UdpSocket::bind((broadcast_ip, 5015)).unwrap();
+                    let socket = UdpSocket::bind((broadcast_ip, BROADCAST_PORT)).unwrap();
                     socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
                     socket.set_broadcast(true).unwrap();
                     receiver_sockets.push(socket);
