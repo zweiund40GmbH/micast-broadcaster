@@ -595,7 +595,7 @@ fn create_pipeline(
         false,
         glib::closure!(|_rtpbin: &gst::Element, jitterbuffer: &gst::Element, session: u32, _ssrc: u32| {
             debug!("new jitterbuffer created: {:?}", session);
-            jitterbuffer.set_property("latency", 40u32); 
+            jitterbuffer.set_property("latency", LATENCY as u32); 
             //jitterbuffer.set_property("add-reference-timestamp-meta", true);
 
 
