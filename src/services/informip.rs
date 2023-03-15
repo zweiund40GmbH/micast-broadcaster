@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use local_ip_address::list_afinet_netifas;
-use log::info;
+use log::{info, trace};
 
 pub fn inform_clients() {
 
@@ -43,7 +43,7 @@ pub fn inform_clients() {
                     let socket = UdpSocket::bind("0.0.0.0:5015").unwrap();
                     socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
                     socket.set_broadcast(true).unwrap();
-                    socket.connect((broadcast_ip, 5015));
+                    let _ = socket.connect((broadcast_ip, 5015));
                     let res = socket.send(content.as_bytes());
                     if res.is_err() {
                         // try to reconnect...
@@ -93,7 +93,7 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
 
             std::thread::sleep(std::time::Duration::from_millis(10000));
             for s in receiver_sockets {
-                println!("recv data...");
+                trace!("recv data from broadcast...");
                 let mut buffer = [0u8; 250];
                 let res = s.recv_from(&mut buffer);
                 match res {

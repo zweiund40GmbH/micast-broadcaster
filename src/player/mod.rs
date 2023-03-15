@@ -37,7 +37,7 @@ struct ClockState {
     clock: Option<gst_net::NetClientClock>,
     address: String,
     port: i32,
-    clock_service_reciever: Receiver<zeroconf::ServiceDiscovery>,
+    clock_service_reciever: Receiver<crate::services::clock_client::IpAddr>,
 }
 
 #[derive(Clone)]
@@ -125,7 +125,7 @@ impl PlaybackClient {
             if let Ok(clock) = receive_clock_service.try_recv() {
                 info!("got clock: {:?}", clock);
 
-                clock_address_from_service = Some((clock.address().to_string(), *clock.port()));
+                clock_address_from_service = Some((clock.to_string(), 8555));
                 break;
             }
             sleep_ms!(100);

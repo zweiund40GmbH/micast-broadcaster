@@ -4,7 +4,6 @@ mod network;
 mod builder;
 mod mixer_bin;
 mod local;
-pub mod informip;
 
 use std::sync::mpsc::Sender;
 
@@ -66,7 +65,6 @@ pub struct BroadcastInner {
 
     current_output: Mutex<OutputMode>,
 
-    clock_zeroconf: Mutex<Option<Sender<bool>>>,
 }
 
 // To be able to access the App's fields directly
@@ -155,7 +153,7 @@ impl Broadcast {
 
         pipeline.use_clock(Some(&clock));
         
-        let service_sender = crate::services::clock_server::service()?;
+        crate::services::clock_server::service()?;
 
 
         // global resample
@@ -215,7 +213,6 @@ impl Broadcast {
             tee_bin,
             net_clock: Mutex::new(net_clock),
             rate: Some(rate),
-            clock_zeroconf: Mutex::new(Some(service_sender)),
         }));
 
 
