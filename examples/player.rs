@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
 
     let player = PlaybackClient::new(
-        "224.1.1.43",
+        "224.1.1.42",
         3333, // rtp in
         3335, // rtcp recv
         3336, // rtcp send

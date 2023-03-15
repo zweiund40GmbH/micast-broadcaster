@@ -120,15 +120,19 @@ impl PlaybackClient {
         let receive_clock_service = crate::services::clock_client::service()?;
         let instant_timer = std::time::Instant::now();
 
-        let mut clock_address_from_service = Some(("".to_string(), 0));
-        while instant_timer.elapsed() < std::time::Duration::from_secs(60) {
-            if let Ok(clock) = receive_clock_service.try_recv() {
-                info!("got clock: {:?}", clock);
+        let mut clock_address_from_service = None;
+        if clock_address.0 == "127.0.0.1" {
+            clock_address_from_service = None;
+        } else {
+            while instant_timer.elapsed() < std::time::Duration::from_secs(60) {
+                if let Ok(clock) = receive_clock_service.try_recv() {
+                    info!("got clock: {:?}", clock);
 
-                clock_address_from_service = Some((clock.to_string(), 8555));
-                break;
+                    clock_address_from_service = Some((clock.to_string(), 8555));
+                    break;
+                }
+                sleep_ms!(100);
             }
-            sleep_ms!(100);
         }
 
 
