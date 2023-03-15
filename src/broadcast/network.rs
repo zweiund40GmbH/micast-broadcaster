@@ -49,12 +49,12 @@ pub fn create_bin(
 
     payloader.set_property("pt", 96u32);
 
-    let hdr_ext = gst_rtp::RTPHeaderExtension::create_from_uri(
-        "urn:ietf:params:rtp-hdrext:ntp-64",
-    )
-    .context("Creating NTP 64-bit RTP header extension")?;
-    hdr_ext.set_id(1);
-    payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
+    //let hdr_ext = gst_rtp::RTPHeaderExtension::create_from_uri(
+    //    "urn:ietf:params:rtp-hdrext:ntp-64",
+    //)
+    //.context("Creating NTP 64-bit RTP header extension")?;
+    //hdr_ext.set_id(1);
+    //payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
 
 
 
