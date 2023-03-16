@@ -23,9 +23,6 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     for (name, ipaddr) in ifas {
         if matches!(ipaddr, IpAddr::V4(_)) && (!name.contains("lo") || ipaddr.is_loopback() == false ) && ipaddr.is_ipv4() {
             println!("This is your local IP address: {:?}, {}", ipaddr, name);
-
-
-
         }
     }
     let main_loop = glib::MainLoop::new(None, false);
@@ -42,7 +39,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
         3333, // rtp in
         3335, // rtcp recv
         3336, // rtcp send
-        ("224.1.1.43", 8555),
+        ("0.0.0.0", 8555),
         Some(44100), // audio_rate
         None, // multicas_interface
         None, // audiodevice 

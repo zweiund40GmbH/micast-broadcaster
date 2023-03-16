@@ -201,8 +201,8 @@ impl Broadcast {
             .dynamic_cast::<gst_app::AppSrc>()
             .expect("Source element is expected to be an appsrc!");
 
-        pipeline.set_base_time(gst::ClockTime::ZERO);
-        pipeline.set_start_time(gst::ClockTime::NONE);
+        //pipeline.set_base_time(gst::ClockTime::ZERO);
+        //pipeline.set_start_time(gst::ClockTime::NONE);
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
