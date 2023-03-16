@@ -99,7 +99,8 @@ pub fn create_bin(
     //rtcp_udp_sink.try_set_property("async", &true)?; 
 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    rtpbin.set_property("rtcp-sync-send-time", false);
+
+    //rtpbin.set_property("rtcp-sync-send-time", false);
     //rtpbin.try_set_property("ntp-sync", &true)?;
 
     //rtpbin.try_set_property("rtcp-sync-interval", &1000u32)?; // in ms
