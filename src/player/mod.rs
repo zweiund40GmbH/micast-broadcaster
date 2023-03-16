@@ -144,6 +144,8 @@ impl PlaybackClient {
             create_clock(clock_address.0, clock_address.1)
         }?;
 
+        // set the clock of pipeline based on ntp time
+        pipeline.use_clock(Some(&clock));
         pipeline.set_latency(gst::ClockTime::from_seconds(2));
 
         let clock_state = ClockState {
@@ -152,6 +154,7 @@ impl PlaybackClient {
             port: clock_address.1,
             clock_service_reciever: receive_clock_service,
         };
+
 
         let pipeline_weak = pipeline.downgrade();
         let pipeline_2weak = pipeline.downgrade();
@@ -578,30 +581,26 @@ fn create_pipeline(
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
     //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
-    //rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     //rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));
 
     if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
         crate::encryption::client_encryption(&rtpbin)?;
     }
     rtpbin.set_property("latency", LATENCY as u32); 
+    rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     //rtpbin.set_property("add-reference-timestamp-meta", true);
-
     rtpbin.set_property_from_str("buffer-mode", "synced");
     rtpbin.set_property("ntp-sync", true);
 
-    rtpbin.connect_closure(
-        "new-jitterbuffer",
-        false,
-        glib::closure!(|_rtpbin: &gst::Element, jitterbuffer: &gst::Element, session: u32, _ssrc: u32| {
-            debug!("new jitterbuffer created: {:?}", session);
-            jitterbuffer.set_property("latency", LATENCY as u32); 
-            //jitterbuffer.set_property("add-reference-timestamp-meta", true);
-
-
-
-        })
-    );
+    //rtpbin.connect_closure(
+    //    "new-jitterbuffer",
+    //    false,
+    //    glib::closure!(|_rtpbin: &gst::Element, jitterbuffer: &gst::Element, session: u32, _ssrc: u32| {
+    //        debug!("new jitterbuffer created: {:?}", session);
+    //        jitterbuffer.set_property("latency", LATENCY as u32); 
+    //        //jitterbuffer.set_property("add-reference-timestamp-meta", true);
+    //    })
+    //);
     
 
     // put all in the pipeline
