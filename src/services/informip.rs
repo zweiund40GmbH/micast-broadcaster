@@ -1,14 +1,15 @@
 // we try to inform all clients about our main ip addresses over a broadcast every 5 seconds
 // 
 // 
-
+use crate::sleep_ms;
 use std::net::{IpAddr, UdpSocket, Ipv4Addr};
 use std::sync::mpsc::Receiver;
 use std::thread;
 use std::time::Duration;
 
 use local_ip_address::list_afinet_netifas;
-use log::{info, trace};
+use log::{info, trace, warn};
+
 
 
 const BROADCAST_PORT:u16 = 5889;
@@ -44,14 +45,20 @@ pub fn inform_clients() {
                     
                     info!("send micast-dj info for ip {}", broadcast_ip);
                     //let socket = UdpSocket::bind(format!("0.0.0.0:{}", BROADCAST_PORT)).unwrap();
-                    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-                    socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-                    socket.set_broadcast(true).unwrap();
-                    let _ = socket.connect((broadcast_ip, BROADCAST_PORT));
-                    let res = socket.send(content.as_bytes());
-                    if res.is_err() {
-                        // try to reconnect...
-                        println!("think we got an error... {:?}", res);
+                    let try_socket = UdpSocket::bind("0.0.0.0:0");
+                    if let Ok(socket) = try_socket {
+                        socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                        socket.set_broadcast(true).unwrap();
+                        let _ = socket.connect((broadcast_ip, BROADCAST_PORT));
+                        let res = socket.send(content.as_bytes());
+                        if res.is_err() {
+                            // try to reconnect...
+                            println!("think we got an error... {:?}", res);
+                        }
+
+                    } else {
+                        warn!("error on create socket for server inform clients: {:?}", try_socket.err());
+                        sleep_ms!(500);
                     }
                 }
             }
@@ -68,7 +75,6 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
     let (sender, receiver) = std::sync::mpsc::channel();
 
     thread::spawn(move || {
-
         loop {
             let mut receiver_sockets = Vec::new();
             let ifas = list_afinet_netifas().unwrap();
@@ -87,15 +93,20 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
                         Ipv4Addr::from(temp)
                     };
                     
-                    let socket = UdpSocket::bind((broadcast_ip, BROADCAST_PORT)).unwrap();
-                    socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-                    socket.set_broadcast(true).unwrap();
-                    receiver_sockets.push(socket);
+                    let try_socket = UdpSocket::bind((broadcast_ip, BROADCAST_PORT));
+                    if let Ok(socket) = try_socket {
+                        socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                        socket.set_broadcast(true).unwrap();
+                        receiver_sockets.push(socket);
+                    } else {
+                        warn!("error on create socket for broadcast: {:?}", try_socket.err().unwrap());
+                        sleep_ms!(500);
+                    }
 
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(10000));
+            sleep_ms!(2000);
             for s in receiver_sockets {
                 trace!("recv data from broadcast...");
                 let mut buffer = [0u8; 250];
