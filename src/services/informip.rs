@@ -3,7 +3,7 @@
 // 
 use crate::sleep_ms;
 use std::net::{IpAddr, UdpSocket, Ipv4Addr};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 use std::time::Duration;
 
@@ -70,13 +70,15 @@ pub fn inform_clients() {
 
 }
 
-pub fn dedect_server_ip() -> Receiver<IpAddr> {
+pub fn dedect_server_ip() -> (Sender<bool>, Receiver<IpAddr>) {
 
     let (sender, receiver) = std::sync::mpsc::channel();
+    let (stopsender, stopreceiver) = std::sync::mpsc::channel();
 
     thread::spawn(move || {
-        loop {
-            let mut receiver_sockets = Vec::new();
+        let mut hold_receiving = true;
+        while hold_receiving {
+
             let ifas = list_afinet_netifas().unwrap();
             for (name, ipaddr) in ifas {
                 if matches!(ipaddr, IpAddr::V4(_)) && (!name.contains("lo") || ipaddr.is_loopback() == false ) && ipaddr.is_ipv4() {
@@ -90,14 +92,31 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
                         };
                         let mut temp = ip.octets();
                         temp[3] = 0xff;
-                        Ipv4Addr::from(temp)
+                        let broadcast_ip = Ipv4Addr::from(temp);
+                        trace!("set {} to broadcast ip  {}", ip, broadcast_ip);
+                        broadcast_ip
                     };
                     
                     let try_socket = UdpSocket::bind((broadcast_ip, BROADCAST_PORT));
                     if let Ok(socket) = try_socket {
-                        socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                        info!("listen on socket {:?} for ip {}", socket.local_addr().unwrap(), broadcast_ip);
+                        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).unwrap();
                         socket.set_broadcast(true).unwrap();
-                        receiver_sockets.push(socket);
+
+                        trace!("check if we get some data from mainsystems.....");
+                        let mut buffer = [0u8; 10];
+                        let res = socket.recv_from(&mut buffer);
+                        match res {
+                            Ok((size, addr)) => {
+                                let data = std::str::from_utf8(&buffer[..size]).unwrap();
+                                info!("received datagramm from {} with {}", addr, data);
+                                let _ = sender.send(addr.clone().ip());
+                                break;
+                            },
+                            Err(e) => {
+                                trace!("error on recv from broadcast: {:?}", e);
+                            }
+                        }
                     } else {
                         warn!("error on create socket for broadcast: {:?}", try_socket.err().unwrap());
                         sleep_ms!(500);
@@ -106,25 +125,15 @@ pub fn dedect_server_ip() -> Receiver<IpAddr> {
                 }
             }
 
-            sleep_ms!(2000);
-            for s in receiver_sockets {
-                trace!("recv data from broadcast...");
-                let mut buffer = [0u8; 250];
-                let res = s.recv_from(&mut buffer);
-                match res {
-                    Ok((size, addr)) => {
-                        let data = std::str::from_utf8(&buffer[..size]).unwrap();
-                        info!("received datagramm from {} with {}", addr, data);
-                        let _ = sender.send(addr.clone().ip());
-                        break;
-                    },
-                    _ => {}
-                }
+            if let Ok(stop) = stopreceiver.try_recv() {
+                hold_receiving = stop;
             }
+            sleep_ms!(1542);
+            trace!("next round...");
         }
     });
 
 
-    return receiver;
+    return (stopsender, receiver);
 }
 

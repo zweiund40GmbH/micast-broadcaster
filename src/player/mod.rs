@@ -12,6 +12,8 @@ use crate::helpers::{make_element, upgrade_weak};
 
 use crate::sleep_ms;
 
+use crate::services::clock_client::ClockService;
+
 
 /// Default latency for Playback
 const LATENCY:i32 = 900;
@@ -37,7 +39,7 @@ struct ClockState {
     clock: Option<gst_net::NetClientClock>,
     address: String,
     port: i32,
-    clock_service_reciever: Receiver<crate::services::clock_client::IpAddr>,
+    clock_service: ClockService,
 }
 
 #[derive(Clone)]
@@ -117,28 +119,20 @@ impl PlaybackClient {
             audio_device.clone(),
         )?;
 
-        let receive_clock_service = crate::services::clock_client::service()?;
-        let instant_timer = std::time::Instant::now();
+        let mut clock_service = ClockService::new()?;
 
-        let mut clock_address_from_service = None;
-        if clock_address.0 == "127.0.0.1" {
-            clock_address_from_service = None;
+        let clock_address_from_service = if clock_address.0 == "127.0.0.1" {
+            info!("skip using broadcast founded clock, cause localhost is set");
+            None
         } else {
-            while instant_timer.elapsed() < std::time::Duration::from_secs(60) {
-                if let Ok(clock) = receive_clock_service.try_recv() {
-                    info!("got clock: {:?}", clock);
-
-                    clock_address_from_service = Some((clock.to_string(), 8555));
-                    break;
-                }
-                sleep_ms!(100);
-            }
-        }
-
+            let _ = clock_service.run();
+            clock_service.wait_for_clock(std::time::Duration::from_secs(30))
+        };
 
 
         let clock = if let Some(clock_from_service) = clock_address_from_service {
             info!("got clock from service: {:?}", clock_from_service);
+            clock_service.stop();
             create_clock(clock_from_service.0.as_str(), clock_from_service.1.into())
         } else {
             create_clock(clock_address.0, clock_address.1)
@@ -152,7 +146,7 @@ impl PlaybackClient {
             clock: Some(clock),
             address: clock_address.0.to_string(),
             port: clock_address.1,
-            clock_service_reciever: receive_clock_service,
+            clock_service,
         };
 
 
@@ -346,7 +340,7 @@ impl PlaybackClient {
             
         }
         //let _ = self.clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
 
     }
 
@@ -377,6 +371,7 @@ impl PlaybackClient {
 
         //info!("player - change_clock_and_server - stop playback");
         //self.stop();
+
         
         let weak_self = self.downgrade();
         let server = address.to_string();
@@ -423,11 +418,10 @@ impl PlaybackClient {
 
 
             sleep_ms!(200);
-
-            info!("player - change_clock_and_server - now start player again");
             //self.start();
             let _ = pipeline.set_state(gst::State::Playing);
-            info!("player - change_clock_and_server - started");
+            info!("player - change_server - started");
+
 
         });
         
@@ -446,7 +440,7 @@ impl PlaybackClient {
     pub fn change_clock(&self, address: &str, port: Option<i32>) -> Result<(), anyhow::Error> {
         
         let mut state = self.clock_state.lock();
-        if &state.address == address {
+        if &state.address == address && address != "0.0.0.0" {
             if let Some(port) = port {
                 if state.port == port {
                     info!("dont change the clock!, ip and port does not changed");
@@ -457,13 +451,33 @@ impl PlaybackClient {
             return Ok(())
         }
 
-        let clock = create_clock(address, port.unwrap_or(state.port))?;
-        let cloned_clock_for_async = clock.clone();
-        state.clock = Some(clock);
-        state.address = address.to_string();
-        if let Some(port) = port {
-            state.port = port;
+        if address == "0.0.0.0" {
+            info!("address is 0.0.0.0 try receive broadcast");
+            state.clock_service.restart();
+            if let Some((address, port)) = state.clock_service.wait_for_clock(std::time::Duration::from_secs(30)) {
+                if address != state.address || port as i32 != state.port {
+                    info!("player - change_server - change clock to {}:{} ", address, port);
+
+                    let clock = create_clock(&address, port as i32)?;
+                    state.clock = Some(clock);
+                    state.address = address.to_string();
+                    state.port = port.into();
+                }
+            } else {
+                warn!("could not find ip address for clock with broadcaster... doesnt know what i need to do now");
+            }
+
+        } else {
+            let clock = create_clock(address, port.unwrap_or(state.port))?;
+            state.clock = Some(clock);
+            state.address = address.to_string();
+            if let Some(port) = port {
+                state.port = port;
+            }
         }
+
+        let cloned_clock_for_async = state.clock.clone().unwrap();
+        
         drop(state);
 
         info!("call async pipeline to change clock");
@@ -567,7 +581,7 @@ fn create_pipeline(
     rtp_src.set_property("address", &server_ip);
 
     let rtcp_src = make_element("udpsrc", Some("rtcp_eingang"))?;
-    //rtcp_src.try_set_property("caps", &crate::encryption::simple_encryption_cap(Some(0)).unwrap())?;
+    //rtcp_src.set_property("caps", &crate::encryption::simple_encryption_cap(Some(0)).unwrap());
     rtcp_src.set_property("port", rtcp_recv_port as i32);
     rtcp_src.set_property("address", &server_ip);
 
@@ -586,7 +600,7 @@ fn create_pipeline(
     if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
         crate::encryption::client_encryption(&rtpbin)?;
     }
-    rtpbin.set_property("latency", LATENCY as u32); 
+    rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     //rtpbin.set_property("add-reference-timestamp-meta", true);
     rtpbin.set_property_from_str("buffer-mode", "synced");
