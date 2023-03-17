@@ -126,12 +126,21 @@ impl PlaybackClient {
             None
         } else {
             let _ = clock_service.run();
-            clock_service.wait_for_clock(std::time::Duration::from_secs(30))
+            let mut clock_service_response = None;
+            loop {
+                clock_service_response = clock_service.wait_for_clock(std::time::Duration::from_secs(30));
+                if  clock_service_response.is_some() {
+                    break;
+                }
+                sleep_ms!(1000);
+                info!("wait 30 seconds for a clock retry now");
+            }
+            clock_service_response
         };
 
 
         let clock = if let Some(clock_from_service) = clock_address_from_service {
-            info!("got clock from service: {:?}", clock_from_service);
+            info!("got clock from service: {:?}, stop lock for clock", clock_from_service);
             clock_service.stop();
             create_clock(clock_from_service.0.as_str(), clock_from_service.1.into())
         } else {
