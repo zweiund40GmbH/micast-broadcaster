@@ -525,7 +525,7 @@ fn create_pipeline(
     pipeline.add(&convert)?;
     pipeline.add(&sink)?;
 
-    sink.set_property("sync", false);
+    sink.set_property("sync", true);
 
     gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
 
