@@ -1,19 +1,22 @@
 /// main work here
 ///
-mod network;
-mod builder;
-mod mixer_bin;
+// mod network;
+// mod builder;
+//mod mixer_bin;
 mod local;
 
-use std::sync::mpsc::Sender;
 
-pub use builder::Builder;
+
+// pub use builder::Builder;
 
 use gst::prelude::*;
 use gst::glib;
 
 use crate::helpers::*;
+//use crate::rtsp;
 use crate::sleep_ms;
+use crate::services::dedector_server;
+use crate::rtpserver;
 
 
 use std::{
@@ -22,12 +25,12 @@ use std::{
 
 use parking_lot::Mutex;
 
-use log::{debug, warn, info};
+use log::{debug, warn, info, trace};
 
-pub(crate) const ENCRYPTION_ENABLED:bool = true;
+//pub(crate) const ENCRYPTION_ENABLED:bool = true;
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OutputMode {
     Local(Option<String>),
     Network,
@@ -52,19 +55,13 @@ pub(crate) struct BroadcastWeak(Weak<BroadcastInner>);
 pub struct BroadcastInner {
     pub pipeline: gst::Pipeline,
     pub appsrc: gst_app::AppSrc,
+    net_clock: gst_net::NetTimeProvider,
 
-    //current_spot: RwLock<Option<spots::Item>>,
-
-    network_bin: gst::Element,
+    rtpserver: Mutex<Option<rtpserver::RTPServer>>,
     local_bin: Mutex<Option<gst::Element>>,
     tee_bin: gst::Element,
 
-    net_clock: Mutex<gst_net::NetTimeProvider>,
-
-    rate: Option<i32>,
-
     current_output: Mutex<OutputMode>,
-
 }
 
 // To be able to access the App's fields directly
@@ -92,38 +89,34 @@ impl Broadcast {
 
     /// Creates the **Broadcast Server** to Send / Stream Audio. 
     /// 
-    /// - Need to add Decoded Things to the adder Thing.. (more docs...)
-    ///
     /// # Arguments
     ///
-    /// * `server_ip` - the Address where the clock Server ist listening for incoming clients
-    /// * `tcp_port` - Port where the tcpserversink ist put out the stream
-    /// * `rate` - The Audio rate defaults top 44100
-    /// * `clock_port` - the TCP Port for the Clock Server (default 8555)
-    /// * `broadcast_ip` - the IP / Adress / BroadcastIP for the streaming RTP RTCP server
-    /// * `spot_volume` - The Volume of a playing spot
-    /// * `broadcast_volume` - the Volume of the running stream while Spot is playing
-    /// * `crossfade_time` - the time while crossfading to a spot and from a spot to the stream
+    /// * `server_address` - the Address where the clock Server ist listening for incoming clients
+    /// * `service_port` - the Address where the clock Server ist listening for incoming clients
+    /// * `current_output` - current output device
     ///
     pub fn new(
-        server_ip: &str, 
-        tcp_port: i32,
-        rate: i32,
-        clock_port: i32,
-        broadcast_ip: Option<String>,
+        server_address: &str,
+        start_port: u32,
         current_output: OutputMode,
     ) -> Result<
         Self,
         anyhow::Error,
     > {
-
-
-
-        debug!("init gstreamer audiorate: {}", rate);
         let _ = gst::init();
 
-        let pipeline = gst::Pipeline::new(Some("pipe"));
+        // setup and init NetTime Provider (aka NTPServer)
+        let clock = gst::SystemClock::obtain();
+        let net_clock = gst_net::NetTimeProvider::new(&clock, None, 8555)?;
+        clock.set_property("clock-type", &gst::ClockType::Realtime);
 
+        let pipeline = gst::Pipeline::new(None);
+        pipeline.use_clock(Some(&clock));
+        
+        // add ip broadcaster (currently wrong name, not only for clock although for server address)
+        dedector_server::service(server_address, start_port)?;
+
+        // caps for AppSrc element from rodio
         let maincaps = gst::Caps::builder("audio/x-raw")
             .field("format", &"F32LE")
             .field("rate", &44100i32)
@@ -132,64 +125,50 @@ impl Broadcast {
             .build();
             
         let src = gst::ElementFactory::make_with_name("appsrc", None).unwrap();
-        src.set_property("is-live", &true);
-        src.set_property("block", &false);
-        src.set_property("format", &gst::Format::Time);
-        src.set_property("caps", &maincaps);
+            src.set_property("is-live", &true);
+            src.set_property("block", &false);
+            src.set_property("format", &gst::Format::Time);
+            src.set_property("caps", &maincaps);
 
         let audioconvert = gst::ElementFactory::make_with_name("audioconvert", None).unwrap();
-        //let audiosink = gst::ElementFactory::make("autoaudiosink", None).unwrap();
-        //let queue = gst::ElementFactory::make("queue2", None).unwrap();
-        //queue.set_property("max-size-time", &32000u64);
 
         pipeline.add_many(&[&src, &audioconvert]).unwrap();
         gst::Element::link_many(&[&src, &audioconvert]).unwrap();
 
-        // setup clock for synchronization
-        let clock = gst::SystemClock::obtain();
-        debug!("add net clock server {} port {}", server_ip, clock_port);
-        let net_clock = gst_net::NetTimeProvider::new(&clock, None, clock_port)?;
-        clock.set_property("clock-type", &gst::ClockType::Realtime);
 
-        pipeline.use_clock(Some(&clock));
-        
-        crate::services::clock_server::service()?;
-
-
-        // global resample
         let mainresampler = make_element("audioresample", Some("mainresampler"))?;
         pipeline.add(&mainresampler)?;
-
         audioconvert.link(&mainresampler)?;
 
-
+        // the pipeline at this point looks like this:
+        // appsrc -> audioconvert -> audioresample -> tee   -> tcp_output
+        //                                                  -> local_output
         let tee_bin = make_element("tee", Some("teebin"))?;
         pipeline.add(&tee_bin)?;
         mainresampler.link(&tee_bin)?;
 
-        let network_bin = network::create_bin(
-            tcp_port + 3, // rtcp_receiver_port
-            tcp_port + 2, // rtcp_send_port
-            tcp_port,     // rtp_send_port
-            &broadcast_ip.unwrap_or(server_ip.to_string()),      // server_address
-            None)?;
+        let local_rtpserver = rtpserver::RTPServer::new(true)?;
 
-        let network_element: gst::Element = network_bin.upcast();
+        let mut rtpserver: Option<rtpserver::RTPServer> = Some(local_rtpserver.clone());
+        // set listening addresses... 
+        // later set also to switch output
+        local_rtpserver.add_client((server_address, start_port))?;
+        local_rtpserver.set_listen_for_rtcp_packets(start_port as i32 + 2)?;
+
         let mut local_bin = None;
 
         match &current_output {
             OutputMode::Network => {
-                pipeline.add(&network_element)?;
-                debug!("link mainmixer src with tcp_output sink");
-                tee_bin.link(&network_element)?;
+                debug!("starting in network mode, connect pipeline to rtpserver and link with tee_bin");
+                pipeline.add(&local_rtpserver.get_element())?;
+                tee_bin.link(&local_rtpserver.get_element())?;
+                rtpserver = Some(local_rtpserver);
             },
             OutputMode::Local(device) => {
-
                 let local_output: gst::Element = local::create_bin(device.clone())?.upcast();
                 pipeline.add(&local_output)?;
                 tee_bin.link(&local_output)?;
                 local_bin = Some(local_output);
-
             }
         };
 
@@ -201,21 +180,18 @@ impl Broadcast {
             .dynamic_cast::<gst_app::AppSrc>()
             .expect("Source element is expected to be an appsrc!");
 
-        //pipeline.set_base_time(gst::ClockTime::ZERO);
-        //pipeline.set_start_time(gst::ClockTime::NONE);
+        pipeline.set_base_time(gst::ClockTime::ZERO);
+        pipeline.set_start_time(gst::ClockTime::NONE);
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
             appsrc,
             current_output: Mutex::new(current_output),
-            network_bin: network_element,
+            rtpserver: Mutex::new(rtpserver),
             local_bin: Mutex::new(local_bin),
             tee_bin,
-            net_clock: Mutex::new(net_clock),
-            rate: Some(rate),
+            net_clock: net_clock,
         }));
-
-
         
         let broadcast_weak = broadcast.downgrade();
         bus.add_signal_watch();
@@ -238,13 +214,16 @@ impl Broadcast {
 
             let weak_pipeline = broadcast.pipeline.downgrade();
             glib::timeout_add(std::time::Duration::from_secs(5), move || {
-                
                 let pipeline = match weak_pipeline.upgrade() {
                     Some(pipeline) => pipeline,
                     None => return Continue(true),
                 };
                 warn!("set pipeline to null and than to playing");
                 let _ = pipeline.set_state(gst::State::Null);
+                // always reset base and start time on restart
+                pipeline.set_base_time(gst::ClockTime::ZERO);
+                pipeline.set_start_time(gst::ClockTime::NONE);
+
                 sleep_ms!(500);
                 let _ = pipeline.set_state(gst::State::Playing);
 
@@ -254,82 +233,38 @@ impl Broadcast {
             None
         });
 
+        let weak_pipeline = broadcast.pipeline.downgrade();
+        glib::timeout_add(std::time::Duration::from_secs(5), move || {
+            let pipeline = match weak_pipeline.upgrade() {
+                Some(pipeline) => pipeline,
+                None => return Continue(true),
+            };
+            let state = pipeline.state(gst::ClockTime::from_mseconds(1000));
+            debug!("CURRENT PIPELINESTATE: {:?}",state);
+
+            Continue(true)
+        }); 
+
 
         Ok(
             broadcast
         )
     }
 
-    /// # Change the IPs of the running system 
-    ///
-    /// paused the current playback and fast switch the ips in the pipeline elements
-    /// 
-    /// ## Arguments
-    ///
-    /// * `broadcast_ip` - the IP / Broadcast / Host Adress of this server
-    /// * `clock_ip` - The IP Where the clock server should listen (can also be a broadcast IP)
-    ///
-    pub fn change_ips(&self, broadcast_ip: Option<&str>, clock_ip: Option<&str>) -> Result<(), anyhow::Error> {
-
-        // rtp_udp_sink - host - network_rtp_sink
-        // rtcp_udp_sink - host - network_rtcp_sink
-        // rtcp_udp_src - address - network_rtcp_src
-        
-        let mut change_something = false;
-
-
-        if let Some(broadcast_ip) = broadcast_ip {
-
-            let rtp_udp_sink = self.pipeline.by_name("network_rtp_sink");
-            if let Some(rtp_udp_sink) = rtp_udp_sink {
-                let old_ip: String = rtp_udp_sink.property("host");
-                if broadcast_ip != old_ip {
-                    change_something = true;
-
-                    let cloned_broadcast_ip = format!("{}", broadcast_ip.clone());
-                    let pipeline = self.pipeline.clone();
-                    glib::idle_add(move || {
-                        let _ = pipeline.set_state(gst::State::Paused);
-
-                        info!("change broadcast ip from {} to {}", old_ip, cloned_broadcast_ip);
-
-                        let rtcp_udp_sink = pipeline.by_name("network_rtcp_sink").unwrap();
-                        let rtcp_udp_src = pipeline.by_name("network_rtcp_src").unwrap();
-                
-                        let _ = rtp_udp_sink.set_property("host", &cloned_broadcast_ip);
-                        let _ = rtcp_udp_sink.set_property("host", &cloned_broadcast_ip);
-                        let _ = rtcp_udp_src.set_property("address", &cloned_broadcast_ip);                
-
-                        Continue(false)
-                    });
-                }
-            }
-            
-
-        }
-
-        if change_something == true {
-            let pipeline = self.pipeline.clone();
-            glib::idle_add(move || {
-                let _ = pipeline.set_state(gst::State::Playing);
-
-                Continue(false)
-            });
-
-        }
-
-        Ok(())
-    }
-
     /// # start
     ///
     /// Starts the GStreamer Pipeline by simple update state to Playing
+    /// start rtspserver if current_output is Network
     /// 
     pub fn start(&self) -> Result<(), anyhow::Error> {
+        // realy important reset start and base time before playing
+        self.pipeline.set_base_time(gst::ClockTime::ZERO);
+        self.pipeline.set_start_time(gst::ClockTime::NONE);
+
         self.pipeline.set_state(gst::State::Playing)?;
+
         Ok(())
     }
-
 
     /// # switch_output
     /// 
@@ -340,53 +275,41 @@ impl Broadcast {
         let mut current_output = self.current_output.lock();
         match &new_output {
             OutputMode::Network => {
-                if let OutputMode::Network = &*current_output {
-                } else {
 
+                if *current_output == new_output {
+                    debug!("current output is already network");
+                    return Ok(());
+                }
+
+                debug!("switch to network mode");
+                self.attach_rtpserver();
+
+                // try remove current local 
+                let local_bin_lock = self.local_bin.lock();
+                if let Some(local_bin) = &*local_bin_lock {
+                    let ghostpad = local_bin.static_pad("sink").unwrap();
+                    let teepad = ghostpad.peer().unwrap();
                     let weak_self = self.downgrade();
-                    glib::idle_add(move || {
-                        debug!("add network to pipeline");
-                        let this = upgrade_weak!(weak_self, Continue(false));
-                        this.pipeline.add(&this.network_bin).expect("can not add network_bin to pipeline");
-                        let _ = this.network_bin.sync_state_with_parent().expect("cannot sync parents state of network bin");
-                        let _ = this.tee_bin.link(&this.network_bin).expect("want to link network bin with tee, but doenst work");
-                        debug!("tee bin linked with networkbin");
-                        Continue(false)
+                    let weak_local_bin = local_bin.downgrade();
+                    let inner_teepad = teepad.clone();
+                    debug!("add probe to remove local connection");
+                    teepad.add_probe(gst::PadProbeType::BLOCK, move |pad, info| {
+                        pad.remove_probe(info.id.take().unwrap());
+                        let this = upgrade_weak!(weak_self, gst::PadProbeReturn::Remove);
+                        let local_bin = upgrade_weak!(weak_local_bin, gst::PadProbeReturn::Remove);
+
+                        let _ = local_bin.set_state(gst::State::Null);
+                        let _ = this.pipeline.remove(&local_bin);
+                        let _ = this.tee_bin.release_request_pad(&inner_teepad);
+
+                        gst::PadProbeReturn::Remove
                     });
-
-
-                    // try remove current local 
-                    let local_bin_lock = self.local_bin.lock();
-                    if let Some(local_bin) = &*local_bin_lock {
-                        let ghostpad = local_bin.static_pad("sink").unwrap();
-                        let teepad = ghostpad.peer().unwrap();
-                        let weak_self = self.downgrade();
-                        let weak_local_bin = local_bin.downgrade();
-                        let inner_teepad = teepad.clone();
-                        debug!("add probe to remove local connection");
-                        teepad.add_probe(gst::PadProbeType::BLOCK, move |pad, info| {
-                            pad.remove_probe(info.id.take().unwrap());
-                            let this = upgrade_weak!(weak_self, gst::PadProbeReturn::Remove);
-                            let local_bin = upgrade_weak!(weak_local_bin, gst::PadProbeReturn::Remove);
-
-                            debug!("set local bin state to null");
-                            let _ = local_bin.set_state(gst::State::Null);
-                            debug!("remove local bin from pipeline");
-                            let _ = this.pipeline.remove(&local_bin);
-
-                            debug!("remove local bin from tee");
-                            let _ = this.tee_bin.release_request_pad(&inner_teepad);
-
-                            gst::PadProbeReturn::Remove
-                        });
-
-                    }
 
                 }
             },
             OutputMode::Local(ref device) => {
-
                 if let OutputMode::Local(current_device) = &*current_output {
+                    // if device not the same as current_device, first remove the local output
                     if device != current_device {
                         // currently we already stream to local output but currently the outputs are not the same
                         let local_bin_lock = self.local_bin.lock();
@@ -424,13 +347,11 @@ impl Broadcast {
 
                                 gst::PadProbeReturn::Remove
                             });
-
                         }
-
                     }
 
                 } else {
-
+                    //
                     debug!("add local connection");
                     let new_device = match &device {
                         Some(d) => Some(d),
@@ -454,25 +375,24 @@ impl Broadcast {
 
                     // we are currently stream to network and want to change to the local output
                     debug!("remove network connection");
-                    let ghostpad = self.network_bin.static_pad("sink").unwrap();
-                    let teepad = ghostpad.peer().unwrap();
-                    let weak_self = self.downgrade();
-                    let inner_teepad = teepad.clone();
-
-
-                    debug!("add probe to remove network connection");
-                    teepad.add_probe(gst::PadProbeType::BLOCK, move |pad, info| {
-                        pad.remove_probe(info.id.take().unwrap());
-                        let this = upgrade_weak!(weak_self, gst::PadProbeReturn::Remove);
-
-                        debug!("set state of network output to null");
-                        let _ = this.network_bin.set_state(gst::State::Null);
-                        debug!("remove network output from pipeline and from tee");
-                        let _ = this.pipeline.remove(&this.network_bin);
-                        let _ = this.tee_bin.release_request_pad(&inner_teepad);
-
-                        gst::PadProbeReturn::Remove
-                    });
+                    if let Some(element) = self.pipeline.by_name("RTPServer0") {
+                        let ghostpad = element.static_pad("sink").unwrap();
+                        let teepad = ghostpad.peer().unwrap();
+                        let weak_self = self.downgrade();
+                        let inner_teepad = teepad.clone();
+    
+                        let cloned_element = element.clone();
+                        debug!("add probe to remove network connection");
+                        teepad.add_probe(gst::PadProbeType::BLOCK, move |pad, info| {
+                            pad.remove_probe(info.id.take().unwrap());
+                            let this = upgrade_weak!(weak_self, gst::PadProbeReturn::Remove);
+                            let _ = cloned_element.set_state(gst::State::Null);
+                            let _ = this.pipeline.remove(&cloned_element);
+                            let _ = this.tee_bin.release_request_pad(&inner_teepad);
+    
+                            gst::PadProbeReturn::Remove
+                        });
+                    }
                     
                 }
 
@@ -484,27 +404,53 @@ impl Broadcast {
         Ok(())
     }
 
-    /// # pause
-    ///
-    /// Pause the Gstreamer Pipeline
-    /// 
-    pub fn pause(&self) -> Result<(), anyhow::Error> {
-        self.pipeline.set_state(gst::State::Paused)?;
-
-        Ok(())
-    }
-
     /// # stop
     ///
     /// Stops the Gstreamer Pipeline by set state to Null
     /// 
     pub fn stop(&self) -> Result<(), anyhow::Error> {
         self.pipeline.set_state(gst::State::Null)?;
-
         Ok(())
     }
 
 
+    /// set rtpserver if not already set
+    /// 
+    /// inside, try to attach proxysink to pipeline and in idle_add attach to pipeline
+    /// IMPORTANT: does not start the rtspserver
+    fn attach_rtpserver(&self) {
+        let locked_rtpserver = self.rtpserver.lock();
+        let element = locked_rtpserver.as_ref().unwrap().get_element();
+        let cloned_element = element.clone();
+        drop(locked_rtpserver);
+
+        let weak_self = self.downgrade();
+        glib::idle_add(move || {
+            let this = upgrade_weak!(weak_self, Continue(false));
+            debug!("idle_add attach network rtp bin sink");
+            this._attach_networksink(&cloned_element);
+            Continue(false)
+        }); 
+    }
+
+    /// # attach_proxysink to pipeline, skip if already attached
+    fn _attach_networksink(&self, element: &gst::Element) {
+        // check if proxysink is already linked && attached
+        if self.pipeline.by_name("RTPServer0").is_some() {
+            trace!("rtpserver already attached");
+        } else {
+            trace!("attach rtpserver");
+            element.sync_state_with_parent();
+            let _ = self.pipeline.add(element);
+        }
+        self.tee_bin.sync_state_with_parent();
+        let response_tee_bin_link = self.tee_bin.link(element);
+        if response_tee_bin_link.is_err() {
+            trace!("tee_bin already linked with rtpserver");
+        } else {
+            trace!("tee bin linked with rtpserver");
+        }
+    }
 
 
 }

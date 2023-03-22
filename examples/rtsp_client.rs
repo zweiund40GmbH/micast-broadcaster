@@ -1,7 +1,7 @@
 
 use gst::glib;
 use log::info;
-use micast_broadcaster::PlaybackClient;
+use micast_broadcaster::rtsp;
 
 // simple thread sleep helper
 macro_rules! sleep_ms {
@@ -34,15 +34,16 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     //let mut player = PlaybackClient::new(
     //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
 
-    let player = PlaybackClient::new(
-        "127.0.0.1",
-        5000, // rtp in
-        ("127.0.0.1", 8555),
+    let player = rtsp::PlaybackClient::new(
+        "0.0.0.0",
+        ("0.0.0.0", 8555),
         Some(44100), // audio_rate
-        None, // multicas_interface
         None, // audiodevice 
         None,
     ).unwrap();        
+
+
+    sleep_ms!(2);
     player.start();
 
     //player.change_clock("10.42.200.76")?;

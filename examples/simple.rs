@@ -13,19 +13,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     debug!("Start test Broadcaster");
     let main_loop = glib::MainLoop::new(None, false);
     
-    let broadcaster = broadcast::Builder::new()
-        //.set_server_ip("224.1.1.43")
-        //.set_server_ip("224.1.1.43")
-        .set_broadcast_ip("224.1.1.43")
-        //.set_server_ip("127.0.0.1")
-        //.set_broadcast_ip("127.0.0.1")
-        .set_audiorate(44100)
-        //.set_startup_output(broadcast::OutputMode::Local(None))
-        .set_startup_output(broadcast::OutputMode::Network)
-        .build_server()?;
+    let broadcaster = broadcast::Broadcast::new(
+        "224.1.1.42",
+        5000,
+        broadcast::OutputMode::Network
+    )?;
 
     //broadcaster.set_scheduler(scheduler);
-
 
     let mut output = output::Output::new_from_broadcaster(&broadcaster, "https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3", Some("./spots/pocking_timetable.xml".to_string()));
     output.run();

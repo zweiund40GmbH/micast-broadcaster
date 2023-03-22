@@ -1,0 +1,12 @@
+if pipeline not ready block receiving rtcp packets
+
+g_object_set (priv->udpsrc_v4[i], "caps", rtcp_caps, NULL);
+
+        /* block early rtcp packets, pipeline not ready */
+        g_assert (priv->block_early_rtcp_pad == NULL);
+        priv->block_early_rtcp_pad = gst_element_get_static_pad
+            (priv->udpsrc_v4[i], "src");
+        priv->block_early_rtcp_probe = gst_pad_add_probe
+            (priv->block_early_rtcp_pad,
+            GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER, NULL, NULL,
+            NULL);

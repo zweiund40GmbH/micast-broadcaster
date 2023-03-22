@@ -36,6 +36,8 @@ pub fn create_bin<T: Into<String> + Clone + fmt::Debug + fmt::Display>(
     } else {
         make_element("autoaudiosink", Some("audiosink"))?
     };
+    //audiosink.set_property("ts-offset", &700000000i64);
+    //audiosink.set_property("sync", true);
 
     bin.add(&audiosink)?;
     capfilter.link(&audiosink)?;

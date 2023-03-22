@@ -24,6 +24,20 @@ impl Output {
         }
     }
 
+    pub fn new_from_rtspserver(appsrc: &gst_app::AppSrc, default_uri: &str, xml: Option<String>) -> Self {
+        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), 1.0, 0.5, 0.5);
+
+        if let Some(xml) = xml {
+            let _ = streamer.set_xml(xml);
+        }
+
+        Output {
+            //appsrc,
+            streamer: Arc::new(streamer),
+            thread_id: None,
+        }
+    }
+
     pub fn run(&mut self) {
         // self.alive.store(true, std::sync::atomic::Ordering::SeqCst);
         // let alive = self.alive.clone();
