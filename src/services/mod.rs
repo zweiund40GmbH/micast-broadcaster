@@ -1,3 +1,3 @@
 pub mod dedector_server;
-pub mod dedector_client;
 mod informip;
+pub use informip::wait_for_broadcast;

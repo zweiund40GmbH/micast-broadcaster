@@ -16,8 +16,9 @@ pub mod output;
 
 pub use player::PlaybackClient;
 pub use player::local_player::LocalPlayer;
-pub use player::rtsp;
+//pub use player::rtsp;
 pub use broadcast::Broadcast;
 //pub use scheduler::Scheduler;
 
 pub use gst::glib;
+

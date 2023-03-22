@@ -1,20 +1,19 @@
 pub(crate) mod local_player;
-pub mod rtsp;
-use gst::prelude::*;
-use gst::glib;
-use log::{debug,warn, info};
 
 use std::str::FromStr;
-use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Weak};
+use std::time::Duration;
+
 use parking_lot::Mutex;
+use anyhow::anyhow;
+
+use gst::prelude::*;
+use gst::glib;
+use log::{debug,warn, info, trace};
 
 use crate::helpers::{make_element, upgrade_weak};
-
 use crate::sleep_ms;
-
-use crate::services::dedector_client::ClockService;
-
+use crate::services;
 
 /// Default latency for Playback
 const LATENCY:i32 = 700;
@@ -32,19 +31,12 @@ struct State {
     recv_rtp_src: Option<gst::Pad>,
     current_output_device: String,
     current_output_element: String,
-    current_server_ip: String,
-}
-
-/// Clock State
-struct ClockState {
-    //clock: Option<gst_net::NetClientClock>,
-    address: String,
-    port: i32,
-    clock_service: ClockService,
+    receiver_address: String,
+    sender_clock_address: String,
 }
 
 #[derive(Clone)]
-pub(crate) struct PlaybackClientWeak(Weak<PlaybackClientInner>);
+pub struct PlaybackClientWeak(Weak<PlaybackClientInner>);
 
 impl std::ops::Deref for PlaybackClient {
     type Target = PlaybackClientInner;
@@ -72,7 +64,6 @@ pub struct PlaybackClientInner {
     #[allow(unused)]
     audio_rate: i32,
     state: Arc<Mutex<State>>,
-    clock_state: Arc<Mutex<ClockState>>,
 }
 
 #[derive(Clone)]
@@ -82,22 +73,29 @@ pub struct PlaybackClient(Arc<PlaybackClientInner>);
 impl PlaybackClient {
 
     // Downgrade the strong reference to a weak reference
-    pub(crate) fn downgrade(&self) -> PlaybackClientWeak {
+    pub fn downgrade(&self) -> PlaybackClientWeak {
         PlaybackClientWeak(Arc::downgrade(&self.0))
     }
 
     /// Create a Playback Client
     /// 
-    /// - `server_ip` * the IP Adress of the rtp server (can also be a multicast IP address)
-    /// - `rtp_port`  * port where the stream gets received
-    /// - `rtcp_recv_port` * port where the rtcp stream gets received
-    /// - `rtcp_send_port` * port where the rtcp stream gets sent
-    /// - `clock_address` * tuple of the clock address and port
-    /// - latency of the playback (set higher on lower bandwith devices), if non LATENCY is used which is 700
+    /// * `rtp_receiver_address` - Address where the rtp server sends the data to (can be a multicast address)
+    ///                            set to 0.0.0.0 to search for the ip via broadcast
+    /// * `server_address`  - the Address of the Server to send RTCP control Packets and sync own NTP Clock
+    ///                       can set to 0.0.0.0 to search for the ip via broadcast
+    ///                       can not be a multicast address
+    /// * `rtp_port` - port where the rtp stream gets received 
+    ///                normaly is 5000 to send RTP, 
+    ///                5001 to send server RTCP, 
+    ///                5002 to receiver RTCP to the server
+    /// * `clock_port` - port where the NTP Server ist listen on per default 8555
+    /// * `audio_rate` - audio rate of the stream per default 44100
+    /// * `latency` - latency of the stream per default 700
     pub fn new(
-        server_ip: &str,
+        rtp_receiver_address: &str,
+        server_address: &str,
         rtp_port: i32,
-        clock_address: (&str, i32),
+        clock_port: Option<i32>,
         audio_rate: Option<i32>,
         latency: Option<i32>,
         multicast_interface: Option<String>,
@@ -108,88 +106,58 @@ impl PlaybackClient {
 
         debug!("init playback client");
 
-        let mut clock_service = ClockService::new()?;
-
-        let clock_address_from_service = if clock_address.0 == "127.0.0.1" {
-            info!("skip using broadcast founded clock, cause localhost is set");
+        let re_server_address = if server_address == "0.0.0.0" {
             None
         } else {
-            let _ = clock_service.run();
-            let mut clock_service_response = None;
-            loop {
-                clock_service_response = clock_service.wait_for_clock(std::time::Duration::from_secs(30));
-                if  clock_service_response.is_some() {
-                    break;
-                }
-                sleep_ms!(1000);
-                info!("wait 30 seconds for a clock retry now");
-            }
-            clock_service_response
+            Some(server_address.to_string())
+        };
+        let re_rtp_receiver_address = if rtp_receiver_address == "0.0.0.0" {
+            None
+        } else {
+            Some(rtp_receiver_address.to_string())
         };
 
+        // this function only search via broadcast for an ip if required (rtp_receiver_address == 0.0.0.0)
+        let (local_server_address, local_rtp_receiver_address) = Self::search_for_ip(
+            re_rtp_receiver_address, 
+            re_server_address, 
+            Duration::from_secs(30)
+        );
 
-        let mut rtcp_send_ip = server_ip.to_string();
+        let clock = create_clock(&local_server_address, clock_port.unwrap_or(8555))?;
 
-        let clock = if let Some(clock_from_service) = clock_address_from_service {
-            info!("got clock from service: {:?}, stop lock for clock", clock_from_service);
-            clock_service.stop();
-            let cloned_clock = clock_from_service.0.clone(); 
-            rtcp_send_ip = cloned_clock;
-            create_clock(rtcp_send_ip.as_str(), clock_from_service.1.into())
-        } else {
-            create_clock(clock_address.0, clock_address.1)
-        }?;
-
-        info!("send rtcp data to {}", rtcp_send_ip);
+        let _ = clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
+        info!("send rtcp data and NTP Clock to {} & recive rtp data from {}", local_server_address, local_rtp_receiver_address);
 
         let (pipeline, convert, source, rtpbin, rtpdepayload) = create_pipeline(
-            server_ip, 
+            &local_rtp_receiver_address, 
             rtp_port, 
-            rtcp_send_ip.as_str(),
+            &local_server_address,
             latency,
             multicast_interface,
             audio_device.clone(),
         )?;
 
-
-        let _ = clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
-        //info!("set CLOCK TO PIPELINE {:#?}", clock);
-        // set the clock of pipeline based on ntp time
-
-        pipeline.call_async(move |pipeline| {
-            pipeline.use_clock(Some(&clock));
-        });
-
-        
+        pipeline.use_clock(Some(&clock));
 
         //pipeline.set_latency(Some(gst::ClockTime::from_seconds(2)));
         //pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
-
-        let clock_state = ClockState {
-            //clock: Some(clock),
-            address: clock_address.0.to_string(),
-            port: clock_address.1,
-            clock_service,
-        };
-
 
         let pipeline_weak = pipeline.downgrade();
         let pipeline_2weak = pipeline.downgrade();
 
         let bus = pipeline.bus().unwrap();
-
         let audio_in_src = convert.static_pad("src").unwrap();
-
-        //let _ = rtpbin.sync_state_with_parent();
-
+        let weak_rtpbin = rtpbin.downgrade();
         let state = State { 
-            rtpbin: rtpbin.clone(),
+            rtpbin: rtpbin,
             source,
             audio_in_src,
             recv_rtp_src: None,
             current_output_element: "alsasink".to_string(),
             current_output_device: audio_device.unwrap_or("".to_string()),
-            current_server_ip: server_ip.to_string(),
+            receiver_address: local_rtp_receiver_address,
+            sender_clock_address:  local_server_address,
         };
 
         let playbackclient = PlaybackClient(Arc::new(PlaybackClientInner { 
@@ -198,7 +166,6 @@ impl PlaybackClient {
             rtpdepayload,
             audio_rate: audio_rate.unwrap_or(DEFAULT_AUDIO_RATE),
             state: Arc::new(Mutex::new(state)),
-            clock_state: Arc::new(Mutex::new(clock_state)),
         }));
 
         glib::timeout_add(std::time::Duration::from_secs(10), move || {
@@ -214,6 +181,7 @@ impl PlaybackClient {
         });
 
         let weak_playbackclient = playbackclient.downgrade();
+        let rtpbin = upgrade_weak!(weak_rtpbin, Err(anyhow!("rtpbin is not available")));
         rtpbin.connect_pad_added(move |_el, pad| {
             let name = pad.name().to_string();
             
@@ -222,7 +190,6 @@ impl PlaybackClient {
             let decoder_sink = decoder.static_pad("sink").unwrap();
 
             debug!("rtpbin pad_added: {} - {:?}", name, decoder);
-
     
             if name.contains("recv_rtp_src") {
 
@@ -240,14 +207,11 @@ impl PlaybackClient {
                 info!("link newley created pad {} to rtpdepayload sink", pad.name());
                 pad.link(&decoder_sink).expect("link of rtpbin pad to rtpdepayload sink should work");
     
-                //pbc.pipeline.set_start_time(gst::ClockTime::NONE);
-    
             }
 
         });
 
-
-
+        // Bus for error handling
         bus.add_watch(move |_, msg| {
             use gst::MessageView;
     
@@ -255,7 +219,7 @@ impl PlaybackClient {
                 Some(pipeline) => pipeline,
                 None => {
                     warn!("bus add watch failed to upgrade pipeline");
-                    return glib::Continue(false)
+                    return glib::Continue(true)
                 },
             };
 
@@ -298,12 +262,12 @@ impl PlaybackClient {
 
                             pipeline.call_async(move |pipeline| {
                                 let _ = pipeline.set_state(gst::State::Null);
+                                pipeline.set_start_time(gst::ClockTime::ZERO);
                                 sleep_ms!(200);
                                 if let Err(e) = pipeline.set_state(gst::State::Playing) {
                                     warn!("error on call start pipeline inside rtp_eingang error : {}", e)
                                 }
 
-                                //pipeline.set_start_time(gst::ClockTime::NONE);
                             });
                  
                             
@@ -313,20 +277,6 @@ impl PlaybackClient {
                     }
                     
                 }
-                MessageView::ClockLost(_) => {
-                    warn!("player - ClockLost... get a new clock");
-                    // Get a new clock.
-                    
-                    pipeline.call_async(move |pipeline| {
-                        let _ = pipeline.set_state(gst::State::Null);
-                        sleep_ms!(200);
-                        if let Err(e) = pipeline.set_state(gst::State::Playing) {
-                            warn!("error on call start pipeline after clock sync error : {}", e)
-                        }
-                        //pipeline.set_start_time(gst::ClockTime::NONE);
-                    });
-                }
-    
                 _ => (),
             };
     
@@ -334,32 +284,14 @@ impl PlaybackClient {
             glib::Continue(true)
         })
         .expect("Failed to add bus watch");
-
-        //let weak_pbc = playbackclient.downgrade();
-        //glib::timeout_add(std::time::Duration::from_secs(10), move || {
-        //    let playbackclient = match weak_pbc.upgrade() {
-        //        Some(playbackclient) => playbackclient,
-        //        None => {
-        //            
-        //            return Continue(true)
-        //        }
-        //    };
-        //    
-        //    playbackclient.change_clock_and_server("10.42.200.179","224.1.1.48");
-        //    
-        //    Continue(false)
-        //});
-
-        debug!("bin HIER");
-
         Ok(
           playbackclient  
         )
-
-        
     }
 
     /// Start the player
+    ///
+    /// befor start with set_state(gst::State::Playing) the start_time is set to gst::ClockTime::NONE
     pub fn start(&self) {
         info!("player - want to start playback");
         self.pipeline.set_start_time(gst::ClockTime::NONE);
@@ -373,113 +305,74 @@ impl PlaybackClient {
 
     /// Stops the player
     pub fn stop(&self) {
-
-        let _ = self.pipeline.set_state(gst::State::Paused);
-        sleep_ms!(200);
         let _ = self.pipeline.set_state(gst::State::Null);
-
     }
 
+    
 
     /// Change Server and clock address
     /// 
     /// # Arguments
     /// 
-    /// * `address` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
-    /// 
-    pub fn change_server(&self, address: &str, timeout: Option<std::time::Duration>) -> Result<(), anyhow::Error> {
+    /// * `rtp_receiver_address` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
+    ///                            if None we will try to find a broadcast message
+    /// * `sender_clock_address` - IP Address / Hostname of the clock provider, should not be a multicast address
+    ///                            if None we will try to find a broadcast message
+    pub fn change_server(&self, rtp_receiver_address: Option<String>, sender_clock_address: Option<String>) -> Result<(), anyhow::Error> {
 
-        let mut ip_changed = false;
-
-        //let inner_state = self.state.lock();
-        //if &inner_state.current_server_ip == address {
-        //    info!("player - do not change ip, cause ip is not changed {}", address);
-        //    return Ok(())
-        //}
-        //drop(inner_state);
-
-        let mut state = self.clock_state.lock();
-        if &state.address == address && address != "0.0.0.0" && address != "127.0.0.1" {
-            info!("dont change the clock!, ip does not changed");
+        let (l_rtp_receiver_address, l_sender_clock_address) = 
+            Self::search_for_ip(
+                rtp_receiver_address, 
+                sender_clock_address, 
+                Duration::from_secs(30)
+            );
+        
+        let mut state = self.state.lock();
+        if state.sender_clock_address == l_sender_clock_address && state.receiver_address == l_rtp_receiver_address {
+            info!("player - change_server - no change in address rtp_rtcp_recv:{} clock_rtcp_sender:{}", l_rtp_receiver_address, l_sender_clock_address);
             return Ok(())
         }
 
+        self.pipeline.set_state(gst::State::Null)?;
+
         // lock for a broadcast message because address is 0.0.0.0
-        let clock = if address == "0.0.0.0" {
-            info!("address is 0.0.0.0 try receive broadcast");
-            state.clock_service.restart();
-            if let Some((address, port)) = state.clock_service.wait_for_clock(timeout.unwrap_or(std::time::Duration::from_secs(30))) {
-                if address != state.address || port as i32 != state.port {
-                    info!("player - change_server - change clock to {}:{} ", address, port);
-
-                    let clock = create_clock(&address, port as i32)?;
-                    //state.clock = Some(clock);
-                    state.address = address.to_string();
-                    state.port = port.into();
-                    ip_changed = true;
-                    clock
-                } else {
-                    info!("player - change_server - clock is already set to {}:{} ", address, port);
-                    return Ok(())
-                }
-            } else {
-                warn!("could not find ip address for clock with broadcaster... doesnt know what i need to do now");
-                return Ok(())
-            }
-
-        } else {
-            let clock = create_clock(address, state.port)?;
-            state.address = address.to_string();
-            ip_changed = true;
-            clock 
-        };
-
-        //let cloned_clock_for_async = state.clock.clone().unwrap();
+         if state.sender_clock_address != l_sender_clock_address {
+            state.sender_clock_address = l_sender_clock_address.to_string();
+            let clock = create_clock(&l_sender_clock_address, 8555)?;
+            self.pipeline.use_clock(Some(&clock));
+            change_ip(&self.pipeline, "rtcp_senden", &l_sender_clock_address, true)?;
+        }
         
+        if state.receiver_address != l_rtp_receiver_address {
+            state.receiver_address = l_rtp_receiver_address.to_string();
+            change_ip(&self.pipeline, "rtp_eingang", &l_rtp_receiver_address, false)?;
+            change_ip(&self.pipeline, "rtcp_eingang", &l_rtp_receiver_address, false)?;
+        }
+
         drop(state);
 
-        info!("call async pipeline to change clock and ip");
-        self.pipeline.call_async(move |pipeline| {
-            let _ = pipeline.set_state(gst::State::Null);
-            pipeline.use_clock(Some(&clock));
-            if ip_changed == true {
-                let rtcp_eingang = match pipeline.by_name("rtcp_eingang") {
-                    Some(elem) => elem,
-                    None => { 
-                        return
-                        //return Err(anyhow!("rtp_sink not found"))
-                    }
-                };
-    
-                let rtcp_senden = match pipeline.by_name("rtcp_senden"){
-                    Some(elem) => elem,
-                    None => { 
-                        return
-                        //return Err(anyhow!("rtcp_sink not found"))
-                    }
-                };
-    
-                let rtp_eingang = match pipeline.by_name("rtp_eingang"){
-                    Some(elem) => elem,
-                    None => { 
-                        return
-                        //return Err(anyhow!("rtcp_src not found"))
-                    }
-                };
-    
-                info!("player - change rtp, rtcp eingang and rtcp ausgang");
-    
-                rtcp_eingang.set_property( "address", &clock.address().unwrap());
-                rtcp_senden.set_property("host", &clock.address().unwrap());
-                rtp_eingang.set_property( "address", &clock.address().unwrap());
-            }
-            pipeline.set_start_time(gst::ClockTime::NONE);
-            sleep_ms!(1000);
-            let _ = pipeline.set_state(gst::State::Playing);
-            info!("async called finished, clock and ip changed");
-        });
+        self.pipeline.set_start_time(Some(gst::ClockTime::ZERO));
+        self.pipeline.set_state(gst::State::Playing)?;
+                
 
         Ok(()) 
+    }
+
+    /// Search for a broadcast message and return the address of the server and the RTP Receiver Address
+    fn search_for_ip(rtp_receiver_address: Option<String>, sender_clock_address: Option<String>, timeout: Duration) -> (String, String) {
+        if rtp_receiver_address.is_some() && sender_clock_address.is_some() {
+            (sender_clock_address.unwrap(), rtp_receiver_address.unwrap())
+        } else {
+            let search_result = services::wait_for_broadcast(timeout).map_or(
+                ("127.0.0.1".into(), "127.0.0.1".into()), 
+                |r| {
+                    trace!("we got a broadcast message");
+                    (r.0.to_string(), r.1)
+                }
+            );
+
+            (sender_clock_address.unwrap_or(search_result.0),rtp_receiver_address.unwrap_or(search_result.1))
+        }
     }
 
     ///
@@ -543,9 +436,9 @@ impl PlaybackClient {
 
 /// crates a rtp playback pipeline 
 fn create_pipeline(
-    server_ip: &str, 
+    rtp_and_rtcp_receiver_address: &str, 
     rtp_port: i32, 
-    rtcp_receiver_ip: &str,
+    rtcp_sender_clock_address: &str,
     latency: Option<i32>,
     _multicast_interface: Option<String>,
     audio_device: Option<String>,
@@ -553,32 +446,24 @@ fn create_pipeline(
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
+    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    let rtcp_caps = gst::Caps::from_str("application/x-rtcp")?;
+
     debug!("create playback pipeline");
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
-    let caps = if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
-        gst::Caps::from_str("application/x-srtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")
-    } else {
-        gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")
-    }?;
-    //let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
-
-
-    let rtcp_caps = gst::Caps::from_str("application/x-rtcp")?;
-
     rtp_src.set_property("caps", &caps);
     rtp_src.set_property("port", rtp_port as i32);
-    rtp_src.set_property("address", &server_ip);
+    rtp_src.set_property("address", &rtp_and_rtcp_receiver_address);
 
+    trace!("create a udpsrc for receiving rtcp packets from server address {}:{}", rtp_and_rtcp_receiver_address, rtp_port + 1);
     let rtcp_src = make_element("udpsrc", Some("rtcp_eingang"))?;
-    debug!("create a udpsrc for receiving rtcp packets from server address {}:{}", server_ip, rtp_port + 1);
-    //rtcp_src.set_property("caps", &crate::encryption::simple_encryption_cap(Some(0)).unwrap());
     rtcp_src.set_property("caps",&rtcp_caps);
     rtcp_src.set_property("port", &((rtp_port + 1) as i32));
-    rtcp_src.set_property("address", &server_ip);
+    rtcp_src.set_property("address", &rtp_and_rtcp_receiver_address);
 
-    debug!("create a udpsink for sending rtcp packets to server address {}", rtcp_receiver_ip);
+    trace!("create a udpsink for sending rtcp packets to server address {}", rtcp_sender_clock_address);
     let rtcp_sink = make_element("udpsink", Some("rtcp_senden"))?;
     rtcp_sink.set_property("port", (rtp_port + 2) as i32);
     rtcp_sink.set_property("host", &"127.0.0.1");
@@ -587,37 +472,30 @@ fn create_pipeline(
     //rtcp_sink.set_property("force-ipv4", true);
 
     let rtpbin = make_element("rtpbin", Some("rtpbin"))?;
-    //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
-    //rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));
     let sdes = gst::Structure::builder("application/x-rtp-source-sdes")
         .field("cname", &"ajshfhausd@192.168.0.3")
         .field("tool", &"micast-dj")
         .build();
     rtpbin.set_property("sdes", sdes);
 
-    //if ENCRYPTION_ENABLED && std::env::var("BC_ENCRYPTION_DISABLED").ok().is_none() {
-    //    crate::encryption::client_encryption(&rtpbin)?;
-    //}
     rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("use-pipeline-clock", true);
-    //rtpbin.set_property("add-reference-timestamp-meta", true);
     rtpbin.set_property_from_str("buffer-mode", "synced");
     rtpbin.set_property("ntp-sync", true);
-    //rtpbin.set_property("max-rtcp-rtp-time-diff", -1);
 
-    rtpbin.connect_closure(
-        "new-jitterbuffer",
-        false,
-        glib::closure!(|_rtpbin: &gst::Element, jitterbuffer: &gst::Element, session: u32, _ssrc: u32| {
-            debug!("new jitterbuffer created for : {:?} {:#?}", session, jitterbuffer);
-            jitterbuffer.connect_closure("handle-sync", false, 
-                glib::closure!(|_jitterbuffer: &gst::Element, str: gst::Structure, _user_data: u32| {
-                    debug!("handle sync: {:?}", str);
-                })
-            );       
-        })
-    );
+    //rtpbin.connect_closure(
+    //    "new-jitterbuffer",
+    //    false,
+    //    glib::closure!(|_rtpbin: &gst::Element, jitterbuffer: &gst::Element, session: u32, _ssrc: u32| {
+    //        debug!("new jitterbuffer created for : {:?} {:#?}", session, jitterbuffer);
+    //        jitterbuffer.connect_closure("handle-sync", false, 
+    //            glib::closure!(|_jitterbuffer: &gst::Element, str: gst::Structure, _user_data: u32| {
+    //                debug!("handle sync: {:?}", str);
+    //            })
+    //        );       
+    //    })
+    //);
     
 
     // put all in the pipeline
@@ -626,9 +504,9 @@ fn create_pipeline(
     pipeline.add(&rtcp_sink)?;
     pipeline.add(&rtpbin)?;
 
-    rtp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtp_sink_%u"))?;
-    rtcp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_%u"))?;
-    rtpbin.link_pads(Some("send_rtcp_src_%u"), &rtcp_sink, Some("sink"))?;
+    rtp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtp_sink_0"))?;
+    rtcp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_0"))?;
+    rtpbin.link_pads(Some("send_rtcp_src_0"), &rtcp_sink, Some("sink"))?;
     
 
     let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
@@ -647,11 +525,9 @@ fn create_pipeline(
     pipeline.add(&convert)?;
     pipeline.add(&sink)?;
 
-    sink.set_property("sync", true);
-    
+    sink.set_property("sync", false);
 
     gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
-    
 
     //pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
@@ -664,4 +540,42 @@ fn create_clock(address: &str, port: i32) -> Result<gst_net::NetClientClock, any
     let clock = gst_net::NetClientClock::new(None, address, port, gst::ClockTime::ZERO);
     clock.set_property("timeout", 2 as u64);
     Ok(clock)
+}
+
+
+fn change_ip(pipeline: &gst::Pipeline, element: &str, address: &str, sink: bool) -> Result<(), anyhow::Error> {
+    match pipeline.by_name(element) {
+        Some(elem) => {
+            if sink {
+                elem.set_property( "host", &address);
+            } else {
+                elem.set_property( "address", &address);
+            }
+            //let pad = if sink {
+            //    elem.static_pad("sink").unwrap()
+            //} else {
+            //    elem.static_pad("src").unwrap()
+            //};
+            //let peer = pad.peer().unwrap();
+
+            //let cloned_elem = elem.clone();
+            //let cloned_address = format!("{}",address);
+            //let cloned_sink = sink.clone();
+            //peer.add_probe(gst::PadProbeType::BLOCK, move |_pad, _else| {
+            //    debug!("change ip on block");
+            //    let _ = cloned_elem.set_state(gst::State::Null);
+            //    if cloned_sink {
+            //        cloned_elem.set_property( "host", &cloned_address);
+            //    } else {
+            //        cloned_elem.set_property( "address", &cloned_address);
+            //    }
+            //    let _ = cloned_elem.set_state(gst::State::Playing);
+            //    gst::PadProbeReturn::Remove
+            //});
+        },
+        None => { 
+            return Err(anyhow!("element {} not found", element))
+        }
+    };
+    Ok(())
 }

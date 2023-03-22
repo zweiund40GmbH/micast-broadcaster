@@ -35,17 +35,34 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
 
     let player = PlaybackClient::new(
-        "127.0.0.1",
-        5000, // rtp in
-        ("127.0.0.1", 8555),
-        Some(44100), // audio_rate
-        None, // multicas_interface
-        None, // audiodevice 
+        "0.0.0.0",
+        "127.0.0.1", // rtp in
+        5000,
+        Some(8555),
+        Some(44100), 
+        None, 
+        None, 
         None,
     ).unwrap();        
     player.start();
 
-    //player.change_clock("10.42.200.76")?;
+    /// NEVER CLONE !!!! ALWAYS DOWNGRADE!!!!
+    let downcasted_player = player.downgrade();
+    glib::timeout_add(std::time::Duration::from_secs(30), move || {
+        let player = downcasted_player.upgrade().unwrap();
+        info!("CHAAAAANGE IP!");
+        player.change_server(Some("127.0.0.1".to_string()), Some("127.0.0.1".to_string()));
+        //player.change_output("autoaudiosink", None);
+        glib::Continue(false)
+    });
+    let downcasted_player = player.downgrade();
+    glib::timeout_add(std::time::Duration::from_secs(60), move || {
+        let player = downcasted_player.upgrade().unwrap();
+        info!("CHAAAAANGE IP to find it by broadcast!");
+        player.change_server(None, None);
+        //player.change_output("autoaudiosink", None);
+        glib::Continue(false)
+    });
     
     main_loop.run();
 

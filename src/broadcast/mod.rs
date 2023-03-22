@@ -1,23 +1,13 @@
 /// main work here
-///
-// mod network;
-// mod builder;
-//mod mixer_bin;
 mod local;
-
-
-
-// pub use builder::Builder;
 
 use gst::prelude::*;
 use gst::glib;
 
 use crate::helpers::*;
-//use crate::rtsp;
 use crate::sleep_ms;
 use crate::services::dedector_server;
 use crate::rtpserver;
-
 
 use std::{
     sync::{Arc, Weak},
@@ -25,7 +15,7 @@ use std::{
 
 use parking_lot::Mutex;
 
-use log::{debug, warn, info, trace};
+use log::{debug, warn, trace};
 
 //pub(crate) const ENCRYPTION_ENABLED:bool = true;
 
@@ -55,6 +45,7 @@ pub(crate) struct BroadcastWeak(Weak<BroadcastInner>);
 pub struct BroadcastInner {
     pub pipeline: gst::Pipeline,
     pub appsrc: gst_app::AppSrc,
+    #[allow(dead_code)]
     net_clock: gst_net::NetTimeProvider,
 
     rtpserver: Mutex<Option<rtpserver::RTPServer>>,
@@ -190,7 +181,7 @@ impl Broadcast {
             rtpserver: Mutex::new(rtpserver),
             local_bin: Mutex::new(local_bin),
             tee_bin,
-            net_clock: net_clock,
+            net_clock,
         }));
         
         let broadcast_weak = broadcast.downgrade();
@@ -381,13 +372,14 @@ impl Broadcast {
                         let weak_self = self.downgrade();
                         let inner_teepad = teepad.clone();
     
-                        let cloned_element = element.clone();
-                        debug!("add probe to remove network connection");
+                        let weak_element = element.downgrade();
+                        trace!("add probe to remove network connection");
                         teepad.add_probe(gst::PadProbeType::BLOCK, move |pad, info| {
                             pad.remove_probe(info.id.take().unwrap());
                             let this = upgrade_weak!(weak_self, gst::PadProbeReturn::Remove);
-                            let _ = cloned_element.set_state(gst::State::Null);
-                            let _ = this.pipeline.remove(&cloned_element);
+                            let element = upgrade_weak!(weak_element, gst::PadProbeReturn::Remove);
+                            let _ = element.set_state(gst::State::Null);
+                            let _ = this.pipeline.remove(&element);
                             let _ = this.tee_bin.release_request_pad(&inner_teepad);
     
                             gst::PadProbeReturn::Remove
@@ -421,14 +413,15 @@ impl Broadcast {
     fn attach_rtpserver(&self) {
         let locked_rtpserver = self.rtpserver.lock();
         let element = locked_rtpserver.as_ref().unwrap().get_element();
-        let cloned_element = element.clone();
+        let weak_elemenet = element.downgrade();
         drop(locked_rtpserver);
 
         let weak_self = self.downgrade();
         glib::idle_add(move || {
             let this = upgrade_weak!(weak_self, Continue(false));
+            let element = upgrade_weak!(weak_elemenet, Continue(false));
             debug!("idle_add attach network rtp bin sink");
-            this._attach_networksink(&cloned_element);
+            this._attach_networksink(&element);
             Continue(false)
         }); 
     }
@@ -440,10 +433,10 @@ impl Broadcast {
             trace!("rtpserver already attached");
         } else {
             trace!("attach rtpserver");
-            element.sync_state_with_parent();
+            let _ = element.sync_state_with_parent();
             let _ = self.pipeline.add(element);
         }
-        self.tee_bin.sync_state_with_parent();
+        let _ = self.tee_bin.sync_state_with_parent();
         let response_tee_bin_link = self.tee_bin.link(element);
         if response_tee_bin_link.is_err() {
             trace!("tee_bin already linked with rtpserver");
