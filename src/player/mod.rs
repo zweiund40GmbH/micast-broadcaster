@@ -647,7 +647,7 @@ fn create_pipeline(
     rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property("use-pipeline-clock", true);
-    rtpbin.set_property("add-reference-timestamp-meta", true);
+    //rtpbin.set_property("add-reference-timestamp-meta", true);
     rtpbin.set_property_from_str("buffer-mode", "synced");
     rtpbin.set_property("ntp-sync", true);
     //rtpbin.set_property("max-rtcp-rtp-time-diff", -1);
