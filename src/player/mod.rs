@@ -380,110 +380,35 @@ impl PlaybackClient {
 
     }
 
-    /// Change Server address
+
+    /// Change Server and clock address
     /// 
     /// # Arguments
     /// 
     /// * `address` - IP Address / Hostname of the RTP Stream provider, can also be a multicast address
     /// 
-    pub fn change_server(&self, address: &str) -> Result<(), anyhow::Error> {
- 
-        info!("CHANGE SERVER");
+    pub fn change_server(&self, address: &str, timeout: Option<std::time::Duration>) -> Result<(), anyhow::Error> {
 
-        let inner_state = self.state.lock();
-        if &inner_state.current_server_ip == address {
-            info!("player - do not change ip, cause ip is not changed {}", address);
-            return Ok(())
-        }
-        drop(inner_state);
+        let mut ip_changed = false;
 
-        //info!("player - change_clock_and_server - stop playback");
-        //self.stop();
+        //let inner_state = self.state.lock();
+        //if &inner_state.current_server_ip == address {
+        //    info!("player - do not change ip, cause ip is not changed {}", address);
+        //    return Ok(())
+        //}
+        //drop(inner_state);
 
-        
-        let weak_self = self.downgrade();
-        let server = address.to_string();
-        self.pipeline.call_async(move |pipeline| {
-
-            let this = upgrade_weak!(weak_self);
-
-            let _ = pipeline.set_state(gst::State::Null);
-
-            let rtcp_eingang = match pipeline.by_name("rtcp_eingang") {
-                Some(elem) => elem,
-                None => { 
-                    return
-                    //return Err(anyhow!("rtp_sink not found"))
-                }
-            };
-
-            let rtcp_senden = match pipeline.by_name("rtcp_senden"){
-                Some(elem) => elem,
-                None => { 
-                    return
-                    //return Err(anyhow!("rtcp_sink not found"))
-                }
-            };
-
-            let rtp_eingang = match pipeline.by_name("rtp_eingang"){
-                Some(elem) => elem,
-                None => { 
-                    return
-                    //return Err(anyhow!("rtcp_src not found"))
-                }
-            };
-
-            info!("player - change_clock_and_server - rtp_eingang changed");
-
-            rtcp_eingang.set_property( "address", &server);
-            rtcp_senden.set_property("host", &server);
-            rtp_eingang.set_property( "address", &server);
-            
-
-            let mut state_guard = this.state.lock();
-            state_guard.current_server_ip = server.to_string();
-            drop(state_guard);
-
-
-            sleep_ms!(200);
-            //self.start();
-            let _ = pipeline.set_state(gst::State::Playing);
-            info!("player - change_server - started");
-
-
-        });
-        
-
-
-        Ok(())
-    }
-
-    /// Change Clock address
-    /// 
-    /// # Arguments
-    /// 
-    /// * `address` - IP Address / Hostname of the clock provider
-    /// * `port` - Optional Port of the clock provider 
-    /// 
-    pub fn change_clock(&self, address: &str, port: Option<i32>) -> Result<(), anyhow::Error> {
-        info!("CHANGE_CLOCK");
-        
         let mut state = self.clock_state.lock();
-        if &state.address == address && address != "0.0.0.0" {
-            if let Some(port) = port {
-                if state.port == port {
-                    info!("dont change the clock!, ip and port does not changed");
-                    return Ok(())
-                }
-            }
+        if &state.address == address && address != "0.0.0.0" && address != "127.0.0.1" {
             info!("dont change the clock!, ip does not changed");
             return Ok(())
         }
 
+        // lock for a broadcast message because address is 0.0.0.0
         let clock = if address == "0.0.0.0" {
             info!("address is 0.0.0.0 try receive broadcast");
             state.clock_service.restart();
-            if let Some((address, port)) = state.clock_service.wait_for_clock(std::time::Duration::from_secs(30)) {
+            if let Some((address, port)) = state.clock_service.wait_for_clock(timeout.unwrap_or(std::time::Duration::from_secs(30))) {
                 if address != state.address || port as i32 != state.port {
                     info!("player - change_server - change clock to {}:{} ", address, port);
 
@@ -491,6 +416,7 @@ impl PlaybackClient {
                     //state.clock = Some(clock);
                     state.address = address.to_string();
                     state.port = port.into();
+                    ip_changed = true;
                     clock
                 } else {
                     info!("player - change_server - clock is already set to {}:{} ", address, port);
@@ -502,12 +428,9 @@ impl PlaybackClient {
             }
 
         } else {
-            let clock = create_clock(address, port.unwrap_or(state.port))?;
-            //state.clock = Some(clock);
+            let clock = create_clock(address, state.port)?;
             state.address = address.to_string();
-            if let Some(port) = port {
-                state.port = port;
-            }
+            ip_changed = true;
             clock 
         };
 
@@ -515,18 +438,49 @@ impl PlaybackClient {
         
         drop(state);
 
-        info!("call async pipeline to change clock");
+        info!("call async pipeline to change clock and ip");
         self.pipeline.call_async(move |pipeline| {
             let _ = pipeline.set_state(gst::State::Null);
             pipeline.use_clock(Some(&clock));
-            sleep_ms!(200);
+            if ip_changed == true {
+                let rtcp_eingang = match pipeline.by_name("rtcp_eingang") {
+                    Some(elem) => elem,
+                    None => { 
+                        return
+                        //return Err(anyhow!("rtp_sink not found"))
+                    }
+                };
+    
+                let rtcp_senden = match pipeline.by_name("rtcp_senden"){
+                    Some(elem) => elem,
+                    None => { 
+                        return
+                        //return Err(anyhow!("rtcp_sink not found"))
+                    }
+                };
+    
+                let rtp_eingang = match pipeline.by_name("rtp_eingang"){
+                    Some(elem) => elem,
+                    None => { 
+                        return
+                        //return Err(anyhow!("rtcp_src not found"))
+                    }
+                };
+    
+                info!("player - change rtp, rtcp eingang and rtcp ausgang");
+    
+                rtcp_eingang.set_property( "address", &clock.address().unwrap());
+                rtcp_senden.set_property("host", &clock.address().unwrap());
+                rtp_eingang.set_property( "address", &clock.address().unwrap());
+            }
+            pipeline.set_start_time(gst::ClockTime::NONE);
+            sleep_ms!(1000);
             let _ = pipeline.set_state(gst::State::Playing);
-            info!("async called finished, clock changed");
+            info!("async called finished, clock and ip changed");
         });
 
-        Ok(())
+        Ok(()) 
     }
-
 
     ///
     /// Change the output device
