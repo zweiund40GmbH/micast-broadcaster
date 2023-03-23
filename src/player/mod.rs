@@ -143,7 +143,16 @@ impl PlaybackClient {
         pipeline.set_start_time(gst::ClockTime::NONE);
         pipeline.set_base_time(gst::ClockTime::ZERO);
         //pipeline.set_latency(Some(gst::ClockTime::from_seconds(2)));
-        pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
+        //pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
+        pipeline.set_latency(Some(gst::ClockTime::from_seconds(2)));
+
+        //rtpbin.connect_closure(
+        //    "new-manager",
+        //    false,
+        //    glib::closure!(|_rtspsrc: &gst::Element, rtpbin: &gst::Element| {
+        //        rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));
+        //    }),
+        //);
 
         let pipeline_weak = pipeline.downgrade();
         let pipeline_2weak = pipeline.downgrade();
@@ -483,11 +492,15 @@ fn create_pipeline(
         .build();
     rtpbin.set_property("sdes", sdes);
 
-    rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32); 
-    rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
+    rtpbin.set_property("latency", 40u32); 
+    rtpbin.set_property("add-reference-timestamp-meta", &true); 
+    //rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
     rtpbin.set_property("use-pipeline-clock", &true);
     rtpbin.set_property_from_str("buffer-mode", &"synced");
     rtpbin.set_property("ntp-sync", &true);
+    rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));    
+    //rtpbin.set_property("rtcp-sync-interval", 1000u32);
+    //rtpbin.set_property("rfc7273-sync", &true);
     //rtpbin.set_property("max-rtcp-rtp-time-diff", -1);
 
     //rtpbin.connect_closure(

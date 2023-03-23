@@ -1,5 +1,6 @@
 
 use gst::prelude::*;
+use gst_rtp::prelude::*;
 use log::debug;
 
 #[derive(Debug,Clone)]
@@ -157,11 +158,12 @@ impl RTPServer {
         payloader.set_property("pt", 96u32);
 
         // try it out
-        //let hdr_ext = gst_rtp::RTPHeaderExtension::create_from_uri(
-        //    "urn:ietf:params:rtp-hdrext:ntp-64",
-        //).unwrap();
-        //hdr_ext.set_id(1);
-        //payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
+        let hdr_ext = gst_rtp::RTPHeaderExtension::create_from_uri(
+            "urn:ietf:params:rtp-hdrext:ntp-64",
+        ).unwrap();
+        hdr_ext.set_id(1);
+
+        payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
 
         // send stream to a multicast group
         let rtp_udp_sink  = Self::_set_udpsink(true, true)?;
