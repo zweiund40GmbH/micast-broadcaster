@@ -493,7 +493,7 @@ fn create_pipeline(
     rtpbin.set_property("sdes", sdes);
 
     rtpbin.set_property("latency", 40u32); 
-    rtpbin.set_property("add-reference-timestamp-meta", &true); 
+    //rtpbin.set_property("add-reference-timestamp-meta", &true); 
     //rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
     rtpbin.set_property("use-pipeline-clock", &true);
     rtpbin.set_property_from_str("buffer-mode", &"synced");
