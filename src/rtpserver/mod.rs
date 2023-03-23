@@ -1,6 +1,5 @@
 
 use gst::prelude::*;
-use gst_rtp::prelude::*;
 use log::debug;
 
 #[derive(Debug,Clone)]
@@ -115,7 +114,7 @@ impl RTPServer {
 
         if mcast {
             udpsink.set_property("auto-multicast", true);
-            udpsink.set_property("loop", false);
+            //udpsink.set_property("loop", false);
             //udpsink.set_property("ttl-mc", 10i32);
         }
 
@@ -203,9 +202,10 @@ impl RTPServer {
         
 
         // some options and properties
-        rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-        rtpbin.set_property("rtcp-sync-send-time", false);
-        rtpbin.set_property("do-retransmission", false);
+        rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
+        rtpbin.set_property("use-pipeline-clock", &true);
+        rtpbin.set_property("rtcp-sync-send-time", &false);
+        rtpbin.set_property("do-retransmission", &false);
 
         // add rtpbin and udpsink to bin
         bin.add_many(&[&queue, &payloader, &rtpbin, &rtp_udp_sink])?;

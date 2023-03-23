@@ -35,12 +35,12 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
 
     let player = PlaybackClient::new(
-        "127.0.0.1",
-        "127.0.0.1", // rtp in
+        "0.0.0.0",
+        "0.0.0.0", // rtp in
         5000,
         Some(8555),
         Some(44100), 
-        Some(1000), 
+        None, 
         None, 
         None,
     ).unwrap();        

@@ -140,8 +140,10 @@ impl PlaybackClient {
 
         pipeline.use_clock(Some(&clock));
 
+        pipeline.set_start_time(gst::ClockTime::NONE);
+        pipeline.set_base_time(gst::ClockTime::ZERO);
         //pipeline.set_latency(Some(gst::ClockTime::from_seconds(2)));
-        //pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
+        pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
 
         let pipeline_weak = pipeline.downgrade();
         let pipeline_2weak = pipeline.downgrade();
@@ -262,7 +264,8 @@ impl PlaybackClient {
 
                             pipeline.call_async(move |pipeline| {
                                 let _ = pipeline.set_state(gst::State::Null);
-                                pipeline.set_start_time(gst::ClockTime::ZERO);
+                                pipeline.set_start_time(gst::ClockTime::NONE);
+                                pipeline.set_base_time(gst::ClockTime::ZERO);
                                 sleep_ms!(200);
                                 if let Err(e) = pipeline.set_state(gst::State::Playing) {
                                     warn!("error on call start pipeline inside rtp_eingang error : {}", e)
@@ -295,6 +298,7 @@ impl PlaybackClient {
     pub fn start(&self) {
         info!("player - want to start playback");
         self.pipeline.set_start_time(gst::ClockTime::NONE);
+        self.pipeline.set_base_time(gst::ClockTime::ZERO);
         if let Err(e) =  self.pipeline.set_state(gst::State::Playing) {
             warn!(" error on start playback for palyer {:?}", e);
             
@@ -351,7 +355,8 @@ impl PlaybackClient {
 
         drop(state);
 
-        self.pipeline.set_start_time(Some(gst::ClockTime::ZERO));
+        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        self.pipeline.set_base_time(gst::ClockTime::ZERO);
         self.pipeline.set_state(gst::State::Playing)?;
                 
 
@@ -466,7 +471,7 @@ fn create_pipeline(
     trace!("create a udpsink for sending rtcp packets to server address {}", rtcp_sender_clock_address);
     let rtcp_sink = make_element("udpsink", Some("rtcp_senden"))?;
     rtcp_sink.set_property("port", (rtp_port + 2) as i32);
-    rtcp_sink.set_property("host", &"127.0.0.1");
+    rtcp_sink.set_property("host", &rtcp_sender_clock_address);
     rtcp_sink.set_property("async", false); 
     rtcp_sink.set_property("sync", false);
     //rtcp_sink.set_property("force-ipv4", true);
@@ -479,10 +484,11 @@ fn create_pipeline(
     rtpbin.set_property("sdes", sdes);
 
     rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32); 
-    rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    rtpbin.set_property("use-pipeline-clock", true);
-    rtpbin.set_property_from_str("buffer-mode", "synced");
-    rtpbin.set_property("ntp-sync", true);
+    rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
+    rtpbin.set_property("use-pipeline-clock", &true);
+    rtpbin.set_property_from_str("buffer-mode", &"synced");
+    rtpbin.set_property("ntp-sync", &true);
+    //rtpbin.set_property("max-rtcp-rtp-time-diff", -1);
 
     //rtpbin.connect_closure(
     //    "new-jitterbuffer",
