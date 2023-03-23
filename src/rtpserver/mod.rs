@@ -1,7 +1,7 @@
 
 use gst::prelude::*;
 use gst_rtp::prelude::*;
-use log::debug;
+use log::{warn, debug};
 
 #[derive(Debug,Clone)]
 pub struct RTPServer {
@@ -158,12 +158,14 @@ impl RTPServer {
         payloader.set_property("pt", 96u32);
 
         // try it out
-        let hdr_ext = gst_rtp::RTPHeaderExtension::create_from_uri(
+        if let Some(hdr_ext) = gst_rtp::RTPHeaderExtension::create_from_uri(
             "urn:ietf:params:rtp-hdrext:ntp-64",
-        ).unwrap();
-        hdr_ext.set_id(1);
-
-        payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
+        ) {
+            hdr_ext.set_id(1);
+            payloader.emit_by_name::<()>("add-extension", &[&hdr_ext]);
+        } else {
+            warn!("could not extend rtp header extension");
+        }
 
         // send stream to a multicast group
         let rtp_udp_sink  = Self::_set_udpsink(true, true)?;
