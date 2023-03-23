@@ -498,7 +498,7 @@ fn create_pipeline(
     rtpbin.set_property("use-pipeline-clock", &true);
     rtpbin.set_property_from_str("buffer-mode", &"synced");
     rtpbin.set_property("ntp-sync", &true);
-    rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));    
+    //rtpbin.set_property("min-ts-offset", gst::ClockTime::from_mseconds(1));    
     //rtpbin.set_property("rtcp-sync-interval", 1000u32);
     //rtpbin.set_property("rfc7273-sync", &true);
     //rtpbin.set_property("max-rtcp-rtp-time-diff", -1);
