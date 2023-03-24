@@ -209,7 +209,7 @@ impl RTPServer {
         // some options and properties
         rtpbin.set_property_from_str("ntp-time-source", "clock-time");
         //rtpbin.set_property("use-pipeline-clock", &true);
-        rtpbin.set_property("rtcp-sync-send-time", true);
+        rtpbin.set_property("rtcp-sync-send-time", false);
         //rtpbin.set_property("do-retransmission", &false);
 
         // add rtpbin and udpsink to bin
