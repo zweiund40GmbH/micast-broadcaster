@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let main_loop = glib::MainLoop::new(None, false);
     
     let broadcaster = broadcast::Broadcast::new(
-        "224.1.1.42",
+        "224.1.1.41",
         5000,
         broadcast::OutputMode::Network
     )?;

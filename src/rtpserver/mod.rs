@@ -39,7 +39,7 @@ impl RTPServer {
         debug!("enable listen for rtcp packets");
         if let Some(rtcp_receiver) = &self.rtcp_receiver {
             rtcp_receiver.set_property("port", &port);
-            //rtcp_receiver.set_property("address", "0.0.0.0");
+            rtcp_receiver.set_property("address", "0.0.0.0");
         } else {
             return Err(anyhow::anyhow!("rtcp receiver not found"));
         }
@@ -65,7 +65,7 @@ impl RTPServer {
 
         if let Some(rtcp_udp_sink) = self.bin.by_name("rtcpsink0") {
             let rtcp_port = port + 1;
-            rtcp_udp_sink.emit_by_name::<()>("add", &[&address.0, &rtcp_port]);
+            //rtcp_udp_sink.emit_by_name::<()>("add", &[&address.0, &rtcp_port]);
             rtcp_udp_sink.emit_by_name::<()>("add", &[&"127.0.0.1", &rtcp_port]);
         }
 
@@ -115,14 +115,15 @@ impl RTPServer {
 
         if mcast {
             udpsink.set_property("auto-multicast", true);
+            udpsink.set_property("multicast-iface", &"enp5s0, wlp1s0, eth0, en10");
             //udpsink.set_property("loop", false);
             //udpsink.set_property("ttl-mc", 10i32);
         }
 
-        if !is_rtp {
-            udpsink.set_property("sync", false);
-        } else {
+        if is_rtp {
             udpsink.set_property("sync", true);
+        } else {
+            udpsink.set_property("sync", false);
             udpsink.set_property("buffer-size", 0x8000i32);
         }
 
@@ -206,10 +207,10 @@ impl RTPServer {
         
 
         // some options and properties
-        rtpbin.set_property_from_str("ntp-time-source", &"clock-time");
-        rtpbin.set_property("use-pipeline-clock", &true);
-        rtpbin.set_property("rtcp-sync-send-time", &false);
-        rtpbin.set_property("do-retransmission", &false);
+        rtpbin.set_property_from_str("ntp-time-source", "clock-time");
+        //rtpbin.set_property("use-pipeline-clock", &true);
+        rtpbin.set_property("rtcp-sync-send-time", true);
+        //rtpbin.set_property("do-retransmission", &false);
 
         // add rtpbin and udpsink to bin
         bin.add_many(&[&queue, &payloader, &rtpbin, &rtp_udp_sink])?;
