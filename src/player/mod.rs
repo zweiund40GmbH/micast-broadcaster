@@ -17,7 +17,7 @@ use crate::sleep_ms;
 use crate::services;
 
 /// Default latency for Playback
-const LATENCY:i32 = 1100;
+const LATENCY:i32 = 2000;
 
 #[allow(unused)]
 const ENCRYPTION_ENABLED:bool = false;
