@@ -17,7 +17,7 @@ use crate::sleep_ms;
 use crate::services;
 
 /// Default latency for Playback
-const LATENCY:i32 = 900;
+const LATENCY:i32 = 1100;
 
 #[allow(unused)]
 const ENCRYPTION_ENABLED:bool = false;
@@ -432,7 +432,6 @@ impl PlaybackClient {
         }
         drop(state);
 
-        debug!("current state after stop {:#?}", self.pipeline.state(gst::ClockTime::NONE));
         self.pipeline.set_start_time(gst::ClockTime::NONE);
         self.pipeline.set_base_time(gst::ClockTime::ZERO);
 
@@ -573,7 +572,7 @@ fn create_pipeline(
         .build();
     rtpbin.set_property("sdes", sdes);
 
-    //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
+    rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
     //rtpbin.set_property("add-reference-timestamp-meta", &true); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     rtpbin.set_property_from_str("buffer-mode", "slave");
