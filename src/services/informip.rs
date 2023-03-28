@@ -14,6 +14,7 @@ use log::{info, trace, warn, debug};
 
 
 const BROADCAST_PORT:u16 = 5889;
+const CONFIRMATION_PORT:u16 = 5887;
 
 pub fn inform_clients(broadcast_ip: &str, broadcast_port: u32) {
 
@@ -131,4 +132,94 @@ pub fn wait_for_broadcast(timeout: std::time::Duration) -> Option<(IpAddr, Strin
     }
     
     None
+}
+
+
+pub fn confirm(server_ip: &str) {
+
+
+    let content = format!("mirror|\n");
+    let addr = format!("{}:{}", server_ip, CONFIRMATION_PORT);
+
+    thread::spawn(move || {
+
+        let content = &content;
+                    
+        let try_socket = UdpSocket::bind(format!("0.0.0.0:0"));
+        if let Ok(socket) = try_socket {
+            socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).unwrap();
+            let _ = socket.connect(addr);
+            let res = socket.send(content.as_bytes());
+            if res.is_err() {
+                // try to reconnect...
+                println!("think we got an error... {:?}", res);
+            }
+
+        } else {
+            warn!("error on create socket for server inform clients: {:?}", try_socket.err());
+            sleep_ms!(500);
+        }
+
+        thread::sleep(Duration::from_secs(2));
+
+    });
+
+}
+
+
+pub fn thread_for_confirm() -> Result<(Receiver<(IpAddr, String)>, Sender<bool>), Box<dyn std::error::Error>> {
+    let (send_client, receive_client) = unbounded::<(IpAddr, String)>();
+    let (send_stop, recevie_stop) = unbounded::<bool>();
+    
+    thread::spawn(move || {
+        let mut keep_runnin = true;
+
+        while keep_runnin {
+            debug!("wait for confirmations...");
+
+            let try_socket = UdpSocket::bind(("0.0.0.0", CONFIRMATION_PORT));
+            if let Ok(socket) = try_socket {
+                info!("create socket for confirmation on port {}", CONFIRMATION_PORT);
+                while keep_runnin {
+                    // if we receive stop, stop!
+                    if let Ok(stop) = recevie_stop.try_recv() {
+                        keep_runnin = stop;
+                    }
+                    let mut buffer = [0u8; 256];
+                    let res = socket.recv_from(&mut buffer);
+                    match res {
+                        Ok((size, addr)) => {
+                            let data = std::str::from_utf8(&buffer[..size]).unwrap();
+                            let d: Vec<&str> = data.split("|").collect();
+                            if d.len() < 1 {
+                                trace!("received confirmation from {} with wrong data {}", addr, data);
+                                break
+                            }
+                            trace!("received confirmation from {} with {}", addr, data);
+                            send_client.try_send((addr.clone().ip(), d[1].to_string()));
+                        },
+                        Err(e) => {
+                            trace!("error on recv from confirmation: {:?}", e);
+                        }
+                    }
+                    sleep_ms!(300);
+                }
+
+            } else {
+                warn!("error on create socket for confirmation: {:?}", try_socket.err().unwrap());
+                sleep_ms!(200);
+            }
+
+            // if we receive stop, stop!
+            if let Ok(stop) = recevie_stop.try_recv() {
+                keep_runnin = stop;
+            }
+
+        }
+
+        debug!("stop thread for confirm");
+
+    });
+
+    Ok((receive_client, send_stop))
 }

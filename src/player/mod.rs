@@ -3,7 +3,7 @@ pub(crate) mod local_player;
 use std::str::FromStr;
 use std::sync::atomic::{Ordering, AtomicBool};
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use anyhow::anyhow;
@@ -67,6 +67,7 @@ pub struct PlaybackClientInner {
     
     timeout_error_handling_is_active: AtomicBool,
     state: Arc<Mutex<State>>,
+    //last_broadcast: Arc<Mutex<Option<Instant>>>,
 }
 
 #[derive(Clone)]
@@ -121,11 +122,14 @@ impl PlaybackClient {
         };
 
         // this function only search via broadcast for an ip if required (rtp_receiver_address == 0.0.0.0)
-        let (local_server_address, local_rtp_receiver_address) = Self::search_for_ip(
+        let (local_server_address, _local_rtp_receiver_address) = Self::search_for_ip(
             re_rtp_receiver_address, 
             re_server_address, 
             Duration::from_secs(30)
         );
+
+        let local_rtp_receiver_address = "0.0.0.0";
+        services::confirm(&local_server_address);
 
         let clock = create_clock(&local_server_address, clock_port.unwrap_or(8555))?;
 
@@ -150,6 +154,8 @@ impl PlaybackClient {
         let bus = pipeline.bus().unwrap();
         let audio_in_src = convert.static_pad("src").unwrap();
         let weak_rtpbin = rtpbin.downgrade();
+        let weak_pipeline_for_confirmation = pipeline.downgrade();
+
         let state = State { 
             rtpbin: rtpbin,
             source,
@@ -161,6 +167,7 @@ impl PlaybackClient {
             sender_clock_address:  server_address.to_string(),
         };
 
+
         let playbackclient = PlaybackClient(Arc::new(PlaybackClientInner { 
             pipeline,
             convert,
@@ -169,6 +176,27 @@ impl PlaybackClient {
             state: Arc::new(Mutex::new(state)),
             timeout_error_handling_is_active: AtomicBool::new(false),
         }));
+
+        glib::timeout_add(Duration::from_millis(services::RECONFIRMATIONTIME_IN_MS), move || {
+            let pipeline = match weak_pipeline_for_confirmation.upgrade() {
+                Some(pipeline) => {
+                    pipeline
+                },
+                None => return Continue(true),
+            };
+            
+            if let Some(rtcp) = pipeline.by_name("rtcp_senden") {
+                let hostaddress = rtcp.property::<String>("host");
+                if hostaddress != "127.0.0.1" || hostaddress != "0.0.0.0" {
+                    debug!("resend confirmation to: {}", hostaddress);
+                    services::confirm(&hostaddress)
+                }
+            }
+
+
+            Continue(true)
+
+        });
 
         glib::timeout_add(std::time::Duration::from_secs(10), move || {
             let pipeline = match pipeline_2weak.upgrade() {
@@ -184,7 +212,7 @@ impl PlaybackClient {
 
         let weak_playbackclient = playbackclient.downgrade();
         let rtpbin = upgrade_weak!(weak_rtpbin, Err(anyhow!("rtpbin is not available")));
-        rtpbin.connect_pad_added(move |rtpbin, pad| {
+        rtpbin.connect_pad_added(move |_rtpbin, pad| {
             let name = pad.name().to_string();
             
             let pbc = upgrade_weak!(weak_playbackclient);
@@ -207,6 +235,7 @@ impl PlaybackClient {
                 drop(state_guard);
     
                 info!("link newley created pad {} to rtpdepayload sink", pad.name());
+                debug!("pad: {:#?}", pad);
                 pad.link(&decoder_sink).expect("link of rtpbin pad to rtpdepayload sink should work");
     
             }
@@ -408,6 +437,12 @@ impl PlaybackClient {
             return Ok(())
         }
 
+        // always send a confirm message
+        //if &l_sender_clock_address != "127.0.0.1" {
+            info!("send confirm message to {}", l_sender_clock_address);
+            services::confirm(&l_sender_clock_address);
+        //}
+
         if let Err(e) = self.pipeline.set_state(gst::State::Null) {
             warn!("error on call stop pipeline inside change_server error : {}", e)
         }
@@ -434,6 +469,7 @@ impl PlaybackClient {
 
         self.pipeline.set_start_time(gst::ClockTime::NONE);
         self.pipeline.set_base_time(gst::ClockTime::ZERO);
+        
 
         if let Err(e) = self.pipeline.set_state(gst::State::Playing) {
             warn!("error on call Playing pipeline inside change_server error : {}", e)
@@ -539,7 +575,8 @@ fn create_pipeline(
 
     let pipeline = gst::Pipeline::new(Some("playerpipeline"));
 
-    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    //let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
+    let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)OPUS")?;
     let rtcp_caps = gst::Caps::from_str("application/x-rtcp")?;
 
     debug!("create playback pipeline");
@@ -549,7 +586,9 @@ fn create_pipeline(
     rtp_src.set_property("timeout", gst::ClockTime::from_seconds(10).nseconds());
     rtp_src.set_property("caps", &caps);
     rtp_src.set_property("port", rtp_port as i32);
-    rtp_src.set_property("address", &rtp_and_rtcp_receiver_address);
+    //rtp_src.set_property("address", &rtp_and_rtcp_receiver_address);
+    // immer der eigene host, da der rtp stream über den eigenen host kommt
+    rtp_src.set_property("address", &"0.0.0.0");
 
     trace!("create a udpsrc for receiving rtcp packets from server address {}:{}", rtp_and_rtcp_receiver_address, rtp_port + 1);
     let rtcp_src = make_element("udpsrc", Some("rtcp_eingang"))?;
@@ -605,7 +644,10 @@ fn create_pipeline(
     rtpbin.link_pads(Some("send_rtcp_src_%u"), &rtcp_sink, Some("sink"))?;
     
 
-    let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
+    let rtpdepayload = make_element("rtpopusdepay", Some("rtpopusdepay"))?;
+    //let rtpdepayload = make_element("rtpopusdepay", Some("rtpopusdepay"))?;
+    let dec = make_element("opusdec", Some("opusdec"))?;
+    //let rtpdepayload = make_element("rtpL24depay", Some("rtpdepayload"))?;
     let convert = make_element("audioconvert", Some("convert"))?;
 
 
@@ -618,12 +660,13 @@ fn create_pipeline(
     };
 
     pipeline.add(&rtpdepayload)?;
+    pipeline.add(&dec)?;
     pipeline.add(&convert)?;
     pipeline.add(&sink)?;
 
     sink.set_property("sync", true);
 
-    gst::Element::link_many(&[&rtpdepayload, &convert, &sink])?;
+    gst::Element::link_many(&[&rtpdepayload, &dec, &convert, &sink])?;
 
     pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
 
@@ -650,7 +693,9 @@ fn change_ip(pipeline: &gst::Pipeline, element: &str, address: &str, sink: bool)
             if sink {
                 elem.set_property( "host", &address);
             } else {
-                elem.set_property( "address", &address);
+                //elem.set_property( "address", &address);
+                // immer die eignee ip nehmen, ist immer empfang, und wir verabscheuen multicast in zukunft
+                elem.set_property( "address", &"0.0.0.0");
             }
             //let pad = if sink {
             //    elem.static_pad("sink").unwrap()

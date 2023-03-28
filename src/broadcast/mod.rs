@@ -110,7 +110,7 @@ impl Broadcast {
         // caps for AppSrc element from rodio
         let maincaps = gst::Caps::builder("audio/x-raw")
             .field("format", &"F32LE")
-            .field("rate", &44100i32)
+            .field("rate", &48000i32)
             .field("channels", &2i32)
             .field("layout", &"interleaved")
             .build();
@@ -138,13 +138,17 @@ impl Broadcast {
         pipeline.add(&tee_bin)?;
         mainresampler.link(&tee_bin)?;
 
-        let local_rtpserver = rtpserver::RTPServer::new(true)?;
+        let local_rtpserver = rtpserver::RTPServer::new(true, true)?;
 
         let mut rtpserver: Option<rtpserver::RTPServer> = Some(local_rtpserver.clone());
         // set listening addresses... 
         // later set also to switch output
-        local_rtpserver.add_client((server_address, start_port))?;
+        //local_rtpserver.add_client((server_address, start_port))?;
+        local_rtpserver.add_client(("127.0.0.1", start_port))?;
         local_rtpserver.set_listen_for_rtcp_packets(start_port as i32 + 2)?;
+        local_rtpserver.check_clients();
+
+
 
         let mut local_bin = None;
 
@@ -236,6 +240,7 @@ impl Broadcast {
             Continue(true)
         }); 
 
+        
 
         Ok(
             broadcast
