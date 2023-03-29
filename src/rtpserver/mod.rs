@@ -207,7 +207,7 @@ impl RTPServer {
                 
                 clients
                     .retain(|c| 
-                        if c.last_connection.elapsed().as_millis() > services::TIMEOUT_CONFIRM_IN_MS {
+                        if c.last_connection.elapsed().as_millis() > services::TIMEOUT_CONFIRM_IN_MS as u128 {
                             warn!("removing {} cause idle since {} seconds", c.addr, services::TIMEOUT_CONFIRM_IN_MS);
                             if let Some(rtp_udp_sink) = bin.by_name("rtpsink0") {
                                 rtp_udp_sink.emit_by_name::<()>("remove", &[&c.addr.to_string(), &5000i32]);
