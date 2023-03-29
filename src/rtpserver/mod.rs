@@ -74,7 +74,7 @@ impl RTPServer {
 
         let port = address.1 as i32;
         if let Some(rtp_udp_sink) = self.bin.by_name("rtpsink0") {
-            debug!("add client: {} {}", address.0, port);
+            debug!("add client / mutliudpsink: {} {}", address.0, port);
             rtp_udp_sink.emit_by_name::<()>("add", &[&address.0, &port]);
             //rtp_udp_sink.emit_by_name::<()>("add", &[&"127.0.0.1", &port]);
 
@@ -187,7 +187,7 @@ impl RTPServer {
                 } 
 
                 if let Some(rtp_udp_sink) = bin.by_name("rtpsink0") {
-                    debug!("add client: {} {}", client, 5000);
+                    warn!("add client: {} {}", client, 5000);
                     rtp_udp_sink.emit_by_name::<()>("add", &[&client.to_string(), &5000i32]);
                 } 
                 if let Some(rtcp_udp_sink) = bin.by_name("rtcpsink0") {
@@ -208,7 +208,7 @@ impl RTPServer {
                 clients
                     .retain(|c| 
                         if c.last_connection.elapsed().as_secs() > services::TIMEOUT_CONFIRM_IN_MS {
-                            debug!("removing {} cause idle since {} seconds", c.addr, services::TIMEOUT_CONFIRM_IN_MS);
+                            warn!("removing {} cause idle since {} seconds", c.addr, services::TIMEOUT_CONFIRM_IN_MS);
                             if let Some(rtp_udp_sink) = bin.by_name("rtpsink0") {
                                 rtp_udp_sink.emit_by_name::<()>("remove", &[&c.addr.to_string(), &5000i32]);
                             }
