@@ -83,11 +83,10 @@ impl Broadcast {
     /// # Arguments
     ///
     /// * `server_address` - the Address where the clock Server ist listening for incoming clients
-    /// * `service_port` - the Address where the clock Server ist listening for incoming clients
+    /// * `service_port` - the Port where the clock Server ist listening for incoming clients
     /// * `current_output` - current output device
     ///
     pub fn new(
-        server_address: &str,
         start_port: u32,
         current_output: OutputMode,
     ) -> Result<
@@ -105,7 +104,7 @@ impl Broadcast {
         pipeline.use_clock(Some(&clock));
         
         // add ip broadcaster (currently wrong name, not only for clock although for server address)
-        dedector_server::service(server_address, start_port)?;
+        dedector_server::service(start_port)?;
 
         // caps for AppSrc element from rodio
         let maincaps = gst::Caps::builder("audio/x-raw")

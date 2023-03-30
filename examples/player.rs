@@ -35,18 +35,16 @@ fn main() -> Result<(), Box<anyhow::Error>> {
     //    "224.1.1.1", "10.211.55.2", 5000,5001,5007, 8555, None, Some("eth0".to_string())).unwrap();
 
     let player = PlaybackClient::new(
-        "0.0.0.0",
-        "0.0.0.0", // rtp in
+        "0.0.0.0", // clock address if 0.0.0.0 we will try to find it by broadcast
         5000,
         Some(8555),
         Some(44100), 
         None, 
         None, 
-        None,
     ).unwrap();        
     player.start();
 
-    /// NEVER CLONE !!!! ALWAYS DOWNGRADE!!!!
+    // NEVER CLONE !!!! ALWAYS DOWNGRADE!!!!
     //let downcasted_player = player.downgrade();
     //glib::timeout_add(std::time::Duration::from_secs(30), move || {
     //    let player = downcasted_player.upgrade().unwrap();

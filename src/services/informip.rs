@@ -16,10 +16,10 @@ use log::{info, trace, warn, debug};
 const BROADCAST_PORT:u16 = 5889;
 const CONFIRMATION_PORT:u16 = 5887;
 
-pub fn inform_clients(broadcast_ip: &str, broadcast_port: u32) {
+pub fn inform_clients(rtp_port: u32) {
 
 
-    let content = format!("micast-dj|{}|{}|\n", broadcast_ip, broadcast_port);
+    let content = format!("micast-dj|NOMULTICAST|{}|\n", rtp_port);
 
     thread::spawn(move || {
 
@@ -31,9 +31,6 @@ pub fn inform_clients(broadcast_ip: &str, broadcast_port: u32) {
 
             for (name, ipaddr) in ifas {
                 if matches!(ipaddr, IpAddr::V4(_)) && (!name.contains("lo") || ipaddr.is_loopback() == false ) && ipaddr.is_ipv4() {
-                    //println!("This is your local IP address: {:?}, {}", ipaddr, name);
-
-                    // make broadcast ip
                     let broadcast_ip = { 
                         let ip =  match ipaddr {
                             IpAddr::V4(ip) => {
@@ -46,7 +43,7 @@ pub fn inform_clients(broadcast_ip: &str, broadcast_port: u32) {
                         Ipv4Addr::from(temp)
                     };
                     
-                    debug!("send micast-dj info for ip {}", broadcast_ip);
+                    debug!("send micast-dj info for over {}", broadcast_ip);
                     //let socket = UdpSocket::bind(format!("0.0.0.0:{}", BROADCAST_PORT)).unwrap();
                     let try_socket = UdpSocket::bind("0.0.0.0:0");
                     if let Ok(socket) = try_socket {

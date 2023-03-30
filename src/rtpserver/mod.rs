@@ -145,7 +145,7 @@ impl RTPServer {
             udpsink.set_property("sync", true);
         } else {
             udpsink.set_property("sync", false);
-            udpsink.set_property("buffer-size", 0x8000i32);
+            //udpsink.set_property("buffer-size", 0x8000i32);
         }
 
         udpsink.set_property("async", false);
@@ -155,12 +155,14 @@ impl RTPServer {
 
     /// set UDPSRC for receiving rtcp packets
     /// 
-    fn _set_udpsrc() -> Result<gst::Element, anyhow::Error> {
+    fn _set_udpsrc(rtcp_receiving_port: u32) -> Result<gst::Element, anyhow::Error> {
         let udpsrc = gst::ElementFactory::make_with_name("udpsrc", Some("udprtscpsrc0"))
             .map_err(|_| anyhow::anyhow!("Failed to create udpsrc for rtcp receiving element"))?;
 
         let cap = gst::Caps::new_empty_simple("application/x-rtcp");
         udpsrc.set_property("caps", &cap);
+        udpsrc.set_property("port", &rtcp_receiving_port);
+        udpsrc.set_property("address", &"0.0.0.0");
 
         Ok(udpsrc)
     }
@@ -239,6 +241,9 @@ impl RTPServer {
         let bin = gst::Bin::new(Some("RTPServer0"));
 
         let queue = gst::ElementFactory::make_with_name("queue", Some("queue0"))?;
+        queue.set_property("flush-on-eos", true);
+        queue.set_property_from_str("leaky", "downstream");
+
         bin.add(&queue)?;
 
         // create a payloader to handle the audio stream
@@ -340,7 +345,7 @@ impl RTPServer {
             rtpbin.link_pads(Some("send_rtcp_src_0"), &rtcp_udp_sink, Some("sink"))?; // send media stream on 5004
 
             // also link receiving part
-            let rtcp_udp_src = Self::_set_udpsrc()?;
+            let rtcp_udp_src = Self::_set_udpsrc(5002)?;
             bin.add(&rtcp_udp_src)?;
             rtcp_udp_src.link_pads(Some("src"), &rtpbin, Some("recv_rtcp_sink_0"))?;
         }

@@ -3,6 +3,8 @@ use micast_rodio::{new_gstreamer, Mp3Streamer};
 use std::sync::Arc; //, atomic::AtomicBool};
 use log::warn;
 
+pub use micast_rodio::Volume;
+
 pub struct Output {
     streamer: Arc<Mp3Streamer>,
     thread_id: Option<std::thread::JoinHandle<()>>,
@@ -59,6 +61,10 @@ impl Output {
 
     pub fn set_timetable(&self, xml: &str) {
         let _ = self.streamer.set_xml(xml.to_string());
+    }
+
+    pub fn set_volume(&self, volume: Volume) {
+        let _ = self.streamer.set_volume(volume);
     }
 
     pub fn is_restarted(&self) -> bool {
