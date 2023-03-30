@@ -285,7 +285,7 @@ impl PlaybackClient {
 
                             pipeline.call_async(move |pipeline| {
                                 let _ = pipeline.set_state(gst::State::Null);
-                                pipeline.set_start_time(gst::ClockTime::NONE);
+                                //pipeline.set_start_time(gst::ClockTime::NONE);
                                 pipeline.set_base_time(gst::ClockTime::ZERO);
                                 sleep_ms!(200);
                                 if let Err(e) = pipeline.set_state(gst::State::Playing) {
@@ -309,7 +309,7 @@ impl PlaybackClient {
                     // by the pipeline).
                     pipeline.set_state(gst::State::Null).unwrap();
                     sleep_ms!(200);
-                    pipeline.set_start_time(gst::ClockTime::NONE);
+                    //pipeline.set_start_time(gst::ClockTime::NONE);
                     pipeline.set_base_time(gst::ClockTime::ZERO);
                     pipeline.set_state(gst::State::Playing).unwrap();
                 }
@@ -351,7 +351,7 @@ impl PlaybackClient {
     /// befor start with set_state(gst::State::Playing) the start_time is set to gst::ClockTime::NONE
     pub fn start(&self) {
         info!("player - want to start playback");
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
         self.pipeline.set_base_time(gst::ClockTime::ZERO);
         if let Err(e) =  self.pipeline.set_state(gst::State::Playing) {
             warn!(" error on start playback for palyer {:?}", e);
@@ -442,7 +442,7 @@ impl PlaybackClient {
         
         drop(state);
 
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
         self.pipeline.set_base_time(gst::ClockTime::ZERO);
         
 
