@@ -126,7 +126,12 @@ impl PlaybackClient {
 
         let use_sync_on_buffer_mode = std::env::var("USE_BUFFER_MODE_SYNC").unwrap_or("1".to_string()) == "1";
 
-        let (pipeline, convert, source, rtpbin, rtpdepayload, rtp_src) = create_pipeline(
+        let pipeline = gst::Pipeline::new(Some("playerpipeline"));
+        pipeline.use_clock(Some(&clock));
+        pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
+
+        let (convert, source, rtpbin, rtpdepayload, rtp_src) = create_pipeline(
+            &pipeline,
             rtp_port, 
             &clock_rtcp_server_address,
             latency,
@@ -134,8 +139,6 @@ impl PlaybackClient {
             audio_device.clone(),
         )?;
 
-        pipeline.use_clock(Some(&clock));
-        pipeline.set_latency(Some(gst::ClockTime::from_mseconds(LATENCY as u64)));
 
         let pipeline_weak = pipeline.downgrade();
         let pipeline_2weak = pipeline.downgrade();
@@ -545,14 +548,13 @@ impl PlaybackClient {
 /// * `audio_device` - Optional audio device name, e.g. hw:0,0
 /// 
 fn create_pipeline(
+    pipeline: &gst::Pipeline,
     rtp_port: i32, 
     rtcp_sender_clock_address: &str,
     latency: Option<i32>,
     buffe_mode_as_slave: bool,
     audio_device: Option<String>,
-) ->  Result<(gst::Pipeline, gst::Element, gst::Element, gst::Element, gst::Element, gst::Element), anyhow::Error> {
-
-    let pipeline = gst::Pipeline::new(Some("playerpipeline"));
+) ->  Result<(gst::Element, gst::Element, gst::Element, gst::Element, gst::Element), anyhow::Error> {
 
     //let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)44100,encoding-name=(string)L24")?;
     let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)OPUS")?;
@@ -639,9 +641,7 @@ fn create_pipeline(
 
     gst::Element::link_many(&[&rtpdepayload, &dec, &convert, &sink])?;
 
-    //pipeline.set_latency(Some(2000 as u64 * gst::ClockTime::MSECOND));
-
-    Ok((pipeline, convert, sink, rtpbin, rtpdepayload, rtp_src))
+    Ok((convert, sink, rtpbin, rtpdepayload, rtp_src))
 }
 
 

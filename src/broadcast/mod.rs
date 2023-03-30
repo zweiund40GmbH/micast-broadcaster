@@ -175,7 +175,7 @@ impl Broadcast {
             .expect("Source element is expected to be an appsrc!");
 
         pipeline.set_base_time(gst::ClockTime::ZERO);
-        pipeline.set_start_time(gst::ClockTime::NONE);
+        //pipeline.set_start_time(gst::ClockTime::NONE);
 
         let broadcast = Broadcast(Arc::new(BroadcastInner {
             pipeline,
@@ -216,7 +216,7 @@ impl Broadcast {
                 let _ = pipeline.set_state(gst::State::Null);
                 // always reset base and start time on restart
                 pipeline.set_base_time(gst::ClockTime::ZERO);
-                pipeline.set_start_time(gst::ClockTime::NONE);
+                //pipeline.set_start_time(gst::ClockTime::NONE);
 
                 sleep_ms!(500);
                 let _ = pipeline.set_state(gst::State::Playing);
@@ -254,7 +254,7 @@ impl Broadcast {
     pub fn start(&self) -> Result<(), anyhow::Error> {
         // realy important reset start and base time before playing
         self.pipeline.set_base_time(gst::ClockTime::ZERO);
-        self.pipeline.set_start_time(gst::ClockTime::NONE);
+        //self.pipeline.set_start_time(gst::ClockTime::NONE);
 
         self.pipeline.set_state(gst::State::Playing)?;
 
