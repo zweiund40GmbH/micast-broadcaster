@@ -593,7 +593,11 @@ fn create_pipeline(
     //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
     //rtpbin.set_property("add-reference-timestamp-meta", &true); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
-    //rtpbin.set_property("rfc7273-sync", true);
+
+    if std::env::var("USE_RFC7273_SYNC").unwrap_or("1".to_string()) == "1" {
+        rtpbin.set_property("rfc7273-sync", true);
+    }
+
     if buffe_mode_as_slave {
         rtpbin.set_property_from_str("buffer-mode", "slave");
     } else {
