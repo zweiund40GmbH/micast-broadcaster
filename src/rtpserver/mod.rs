@@ -161,7 +161,7 @@ impl RTPServer {
 
         let cap = gst::Caps::new_empty_simple("application/x-rtcp");
         udpsrc.set_property("caps", &cap);
-        udpsrc.set_property("port", &rtcp_receiving_port);
+        udpsrc.set_property("port", &(rtcp_receiving_port as i32));
         udpsrc.set_property("address", &"0.0.0.0");
 
         Ok(udpsrc)
