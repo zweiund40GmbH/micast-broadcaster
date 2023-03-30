@@ -124,7 +124,7 @@ impl PlaybackClient {
         let _ = clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
         info!("send rtcp data and NTP Clock to {} & recive rtp data to 0.0.0.0", clock_rtcp_server_address);
 
-        let use_sync_on_buffer_mode = std::env::var("USE_BUFFER_MODE_SYNC").unwrap_or("0".to_string()) == "1";
+        let use_sync_on_buffer_mode = std::env::var("USE_BUFFER_MODE_SYNC").unwrap_or("1".to_string()) == "1";
 
         let (pipeline, convert, source, rtpbin, rtpdepayload, rtp_src) = create_pipeline(
             rtp_port, 
@@ -541,14 +541,14 @@ impl PlaybackClient {
 /// * `rtp_port` - Port for the RTP Stream (usually 5000)
 /// * `rtcp_sender_clock_address` - IP Address / Hostname of the clock provider, should not be a multicast address
 /// * `latency` - Latency in ms
-/// * `sync_mode_slave` - If true, the pipeline will use the clock of the clock provider
+/// * `buffe_mode_as_slave` - If true, the buffer-mode on rtpbin / jitterbuffer is slave. else its synced
 /// * `audio_device` - Optional audio device name, e.g. hw:0,0
 /// 
 fn create_pipeline(
     rtp_port: i32, 
     rtcp_sender_clock_address: &str,
     latency: Option<i32>,
-    sync_mode_slave: bool,
+    buffe_mode_as_slave: bool,
     audio_device: Option<String>,
 ) ->  Result<(gst::Pipeline, gst::Element, gst::Element, gst::Element, gst::Element, gst::Element), anyhow::Error> {
 
@@ -558,7 +558,7 @@ fn create_pipeline(
     let caps = gst::Caps::from_str("application/x-rtp,channels=(int)2,format=(string)S16LE,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)OPUS")?;
     let rtcp_caps = gst::Caps::from_str("application/x-rtcp")?;
 
-    warn!("create playback pipeline with rtp port: {}, rtcp sender clock address: {}, latency: {:?}, sync_mode_slave: {}, audio_device: {:?}", rtp_port, rtcp_sender_clock_address, latency, sync_mode_slave, audio_device);
+    warn!("create playback pipeline with rtp port: {}, rtcp sender clock address: {}, latency: {:?}, use slave in buffer-mode: {}, audio_device: {:?}", rtp_port, rtcp_sender_clock_address, latency, buffe_mode_as_slave, audio_device);
 
     let rtp_src = make_element("udpsrc", Some("rtp_eingang"))?;
 
@@ -594,7 +594,7 @@ fn create_pipeline(
     //rtpbin.set_property("add-reference-timestamp-meta", &true); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
     //rtpbin.set_property("rfc7273-sync", true);
-    if sync_mode_slave {
+    if buffe_mode_as_slave {
         rtpbin.set_property_from_str("buffer-mode", "slave");
     } else {
         rtpbin.set_property_from_str("buffer-mode", "synced");
