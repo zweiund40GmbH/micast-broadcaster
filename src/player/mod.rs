@@ -590,9 +590,10 @@ fn create_pipeline(
     //    .build();
     //rtpbin.set_property("sdes", sdes);
 
-    //rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
+    rtpbin.set_property("latency", latency.unwrap_or(LATENCY) as u32);
     //rtpbin.set_property("add-reference-timestamp-meta", &true); 
     rtpbin.set_property_from_str("ntp-time-source", "clock-time");
+    //rtpbin.set_property("drop-on-latency", true);
 
     if std::env::var("USE_RFC7273_SYNC").unwrap_or("1".to_string()) == "1" {
         rtpbin.set_property("rfc7273-sync", true);
@@ -638,7 +639,7 @@ fn create_pipeline(
 
     gst::Element::link_many(&[&rtpdepayload, &dec, &convert, &sink])?;
 
-    pipeline.set_latency(Some(latency.unwrap_or(LATENCY) as u64 * gst::ClockTime::MSECOND));
+    pipeline.set_latency(Some(2000 as u64 * gst::ClockTime::MSECOND));
 
     Ok((pipeline, convert, sink, rtpbin, rtpdepayload, rtp_src))
 }
