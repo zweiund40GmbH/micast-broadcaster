@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<anyhow::Error>> {
         "0.0.0.0", // clock address if 0.0.0.0 we will try to find it by broadcast
         5000,
         Some(8555),
-        Some(44100), 
+        Some(48000), 
         None, 
         None, 
     ).unwrap();        

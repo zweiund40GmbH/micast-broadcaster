@@ -21,7 +21,7 @@ const LATENCY:i32 = 1500;
 
 #[allow(unused)]
 const ENCRYPTION_ENABLED:bool = false;
-const DEFAULT_AUDIO_RATE:i32 = 44100;
+const DEFAULT_AUDIO_RATE:i32 = 48000;
 
 
 struct State {
@@ -99,6 +99,7 @@ impl PlaybackClient {
         audio_rate: Option<i32>,
         latency: Option<i32>,
         audio_device: Option<String>,
+        //existing_clock: Option<gst_net::NetClientClock>,
     ) -> Result<PlaybackClient, anyhow::Error> {
 
         gst::init()?;
@@ -112,15 +113,20 @@ impl PlaybackClient {
         };
 
         // this function only search via broadcast for an ip if required (rtp_receiver_address == 0.0.0.0)
-        let clock_rtcp_server_address = Self::search_for_ip(
-            re_server_address, 
-            Duration::from_secs(30)
-        );
+        let clock_rtcp_server_address = if re_server_address.is_none() {
+            let remote_address = Self::search_for_ip(
+                re_server_address, 
+                Duration::from_secs(30)
+            );
+            services::confirm(&remote_address);
+            remote_address
+        } else {
+            warn!("start in localhost mode");
+            re_server_address.unwrap()
+        };
 
-        services::confirm(&clock_rtcp_server_address);
 
         let clock = create_clock(&clock_rtcp_server_address, clock_port.unwrap_or(8555))?;
-
         let _ = clock.wait_for_sync(Some(5 * gst::ClockTime::SECOND));
         info!("send rtcp data and NTP Clock to {} & recive rtp data to 0.0.0.0", clock_rtcp_server_address);
 
@@ -176,9 +182,10 @@ impl PlaybackClient {
                 None => return Continue(true),
             };
             
+            // only send confirmation if we not in localhost mode
             if let Some(rtcp) = pipeline.by_name("rtcp_senden") {
                 let hostaddress = rtcp.property::<String>("host");
-                if hostaddress != "127.0.0.1" || hostaddress != "0.0.0.0" {
+                if hostaddress != "127.0.0.1" && hostaddress != "0.0.0.0" {
                     debug!("resend confirmation to: {}", hostaddress);
                     services::confirm(&hostaddress)
                 }
@@ -333,7 +340,7 @@ impl PlaybackClient {
                     }
                 }
                 e => {
-                    //warn!("unhandled message: {:?}", e);
+                    warn!("unhandled message: {:?}", e);
                 }
             };
     
@@ -352,12 +359,11 @@ impl PlaybackClient {
     pub fn start(&self) {
         info!("player - want to start playback");
         //self.pipeline.set_start_time(gst::ClockTime::NONE);
-        self.pipeline.set_base_time(gst::ClockTime::ZERO);
+        //self.pipeline.set_base_time(gst::ClockTime::ZERO);
         if let Err(e) =  self.pipeline.set_state(gst::State::Playing) {
             warn!(" error on start playback for palyer {:?}", e);
             
         }
-
     }
 
 
@@ -465,6 +471,7 @@ impl PlaybackClient {
     /// * (sender_clock_address, rtp_receiver_address)
     fn search_for_ip(sender_clock_address: Option<String>, timeout: Duration) -> String {
         if sender_clock_address.is_some() {
+            warn!("search_for_ip: we have a sender_clock_address: {:?}", sender_clock_address);
             sender_clock_address.unwrap()
         } else {
             let search_result = services::wait_for_broadcast(timeout).map_or(
