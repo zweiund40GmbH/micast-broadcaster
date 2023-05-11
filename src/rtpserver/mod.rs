@@ -242,7 +242,7 @@ impl RTPServer {
 
         let queue = gst::ElementFactory::make_with_name("queue", Some("queue0"))?;
         queue.set_property("flush-on-eos", true);
-        queue.set_property_from_str("leaky", "downstream");
+        //queue.set_property_from_str("leaky", "downstream");
 
         bin.add(&queue)?;
 

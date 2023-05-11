@@ -22,7 +22,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut output = output::Output::new_from_broadcaster(&broadcaster, "https://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3", Some("./spots/pocking_timetable.xml".to_string()));
     output.run();
-
     broadcaster.start()?;
     //broadcaster.play("http://server35757.streamplus.de/stream.mp3")?;
     //broadcaster.play("http://itcoops.de:8000/drumyourass.mp3")?;

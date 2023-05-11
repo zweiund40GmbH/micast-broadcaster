@@ -32,7 +32,7 @@ reqwest-retry = { version = "0.1.5" }
 
 async-std = {version = "1.12", features = ["attributes", "tokio1"]}
 futures = "0.3"
-micast-rodio = { git = "https://github.com/zweiund40GmbH/micast-rodio.git", branch="main", features=["gstreamer", "minimp3"]}
+micast-rodio = { git = "https://github.com/zweiund40GmbH/micast-rodio.git", branch="threading", features=["gstreamer", "minimp3"]}
 
 env_logger = "0.10"
 local-ip-address = "0.5.1"
@@ -43,3 +43,6 @@ crossbeam-channel = "0.5.7"
 default = ["v1_20"]
 v1_20 = ["gst/v1_20", "gst-base/v1_20", "gst-audio/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-rtp/v1_20"]
 v1_18 = ["gst/v1_18", "gst-base/v1_18", "gst-audio/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-rtp/v1_18"]
+
+#[patch."https://github.com/zweiund40GmbH/micast-rodio"]
+#micast-rodio = { path = "../micast-rodio" }

@@ -439,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-queue"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1cfb3ea8a53f37c40dea2c7bedcbd88bdfae54f5e2175d6ecaff1c988353add"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1422,11 +1432,13 @@ dependencies = [
 [[package]]
 name = "micast-rodio"
 version = "0.1.0"
-source = "git+https://github.com/zweiund40GmbH/micast-rodio.git?branch=main#20edb66aaea0a6392fb8968775610c17e0093153"
+source = "git+https://github.com/zweiund40GmbH/micast-rodio.git?branch=threading#c3ecb988fe8695f1a9763a2029a2cf5fa2ffcc9e"
 dependencies = [
  "anyhow",
  "async-std",
  "chrono",
+ "crossbeam-queue",
+ "crossbeam-utils",
  "futures",
  "gstreamer",
  "gstreamer-app",
