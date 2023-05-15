@@ -196,14 +196,13 @@ impl PlaybackClient {
 
         });
 
-        glib::timeout_add(std::time::Duration::from_secs(10), move || {
+        glib::timeout_add(std::time::Duration::from_secs(20), move || {
             let pipeline = match pipeline_2weak.upgrade() {
                 Some(pipeline) => pipeline,
                 None => return glib::Continue(true),
             };
  
             info!("player - current pipeline state: {:?}", pipeline.state(Some(gst::ClockTime::from_seconds(1))));
-            info!("player - pipeline clock: {:?}", pipeline.clock());
 
             Continue(true)
         });
@@ -331,7 +330,6 @@ impl PlaybackClient {
                                     warn!("rtp_eingang timeout, try restart pipeline");
                                     let pbc = upgrade_weak!(weak_playbackclient, glib::Continue(true));
                                     pbc.try_reconnect();
-                                    warn!("..");
                                 }
                             }
                         }
