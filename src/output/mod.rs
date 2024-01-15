@@ -2,6 +2,7 @@
 use micast_rodio::{new_gstreamer, Mp3Streamer};
 use std::sync::Arc; //, atomic::AtomicBool};
 use log::warn;
+use micast_rodio::StreamType;
 
 pub use micast_rodio::Volume;
 
@@ -56,7 +57,8 @@ impl Output {
     }
 
     pub fn play(&self, uri: &str) {
-        let _  = self.streamer.set_stream(Some(uri.to_string()));
+        let _  = self.streamer.set_stream(StreamType::Online(Some(uri.to_string())));
+        //let _  = self.streamer.set_stream(Some(uri.to_string()));
     }
 
     pub fn set_timetable(&self, xml: &str) {
@@ -67,8 +69,11 @@ impl Output {
         let _ = self.streamer.set_volume(volume);
     }
 
+    //DEPRECATED: doesnt need to call
     pub fn is_restarted(&self) -> bool {
-        self.streamer.is_restarted()
+        //self.streamer.is_restarted()
+        
+        false
     }
 
     
