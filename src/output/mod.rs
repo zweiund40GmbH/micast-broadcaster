@@ -12,9 +12,9 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new_from_broadcaster(broadcaster: &super::Broadcast, default_uri: &str, xml: Option<String>) -> Self {
+    pub fn new_from_broadcaster(broadcaster: &super::Broadcast, default_uri: &str, xml: Option<String>, emergency_playlist: Vec<String>) -> Self {
         let appsrc = broadcaster.appsrc.clone();
-        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), 1.0, 0.5, 0.5);
+        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), emergency_playlist, 1.0, 0.5, 0.5);
 
         if let Some(xml) = xml {
             let _ = streamer.set_xml(xml);
@@ -27,8 +27,8 @@ impl Output {
         }
     }
 
-    pub fn new_from_rtspserver(appsrc: &gst_app::AppSrc, default_uri: &str, xml: Option<String>) -> Self {
-        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), 1.0, 0.5, 0.5);
+    pub fn new_from_rtspserver(appsrc: &gst_app::AppSrc, default_uri: &str, xml: Option<String>, emergency_playlist: Vec<String>) -> Self {
+        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), emergency_playlist, 1.0, 0.5, 0.5);
 
         if let Some(xml) = xml {
             let _ = streamer.set_xml(xml);
@@ -57,6 +57,15 @@ impl Output {
     }
 
     pub fn play(&self, uri: &str) {
+        // https://itcoops.de/streambeamteam/bla.xml -> das ist kein online stream sondern ne playlist
+        // file://home/pi/bla.xml -> das ist ne lokale playlist
+        // datei.mp3#b4e7d5 alles nach der raute die filesize als hexstring
+
+
+        /*if uri.ends_with(".xml") {
+            let _  = self.streamer.set_stream(StreamType::Offline(Some(uri.to_string())));
+            return;
+        }*/
         let _  = self.streamer.set_stream(StreamType::Online(Some(uri.to_string())));
         //let _  = self.streamer.set_stream(Some(uri.to_string()));
     }
