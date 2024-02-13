@@ -28,7 +28,7 @@ impl Output {
     }
 
     pub fn new_from_rtspserver(appsrc: &gst_app::AppSrc, default_uri: &str, xml: Option<String>, emergency_playlist: Vec<String>) -> Self {
-        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), emergency_playlist, 1.0, 0.5, 0.5, 0.0);
+        let streamer = new_gstreamer(&appsrc, Some(default_uri.to_string()), emergency_playlist, 1.0, 0.2, 0.5, 0.0);
 
         if let Some(xml) = xml {
             let _ = streamer.set_xml(xml);
